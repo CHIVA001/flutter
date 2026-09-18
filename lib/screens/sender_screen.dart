@@ -37,8 +37,12 @@ class _SenderScreenState extends State<SenderScreen> {
   bool _isOnlineMode = false;
 
   /// Set when the picked gallery photo is a Live Photo (iOS only).
-  /// Null means either not iOS, not an image, or not detected as Live Photo.
   AssetEntity? _livePhotoAsset;
+
+  /// Multi-file selection state. Empty = single-file mode.
+  List<File> _multiFiles = [];
+  List<String> _multiFileNames = [];
+  int _multiTotalSize = 0;
 
   @override
   void initState() {
@@ -59,7 +63,7 @@ class _SenderScreenState extends State<SenderScreen> {
     super.dispose();
   }
 
-  /// Sets the selected file and reads its metadata
+  /// Sets the selected file (single-file mode) and clears multi-file state.
   void _onFileSelected(File file, String name, int size) {
     setState(() {
       _selectedVideo = file;
@@ -68,7 +72,31 @@ class _SenderScreenState extends State<SenderScreen> {
       _payload = null;
       _progress = TransferProgress.idle();
       _statusMessage = null;
-      _livePhotoAsset = null; // reset; _detectLivePhoto sets it if applicable
+      _livePhotoAsset = null;
+      _multiFiles = [];
+      _multiFileNames = [];
+      _multiTotalSize = 0;
+    });
+  }
+
+  /// Sets multi-file selection state (2+ files — will be zipped on beam).
+  void _onMultiFilesSelected(
+    List<File> files,
+    List<String> names,
+    int totalSize,
+  ) {
+    setState(() {
+      _multiFiles = files;
+      _multiFileNames = names;
+      _multiTotalSize = totalSize;
+      // Also set single-file vars so guards like `_selectedVideo == null` work
+      _selectedVideo = files.first;
+      _videoSize = totalSize;
+      _videoName = '${files.length} files';
+      _payload = null;
+      _progress = TransferProgress.idle();
+      _statusMessage = null;
+      _livePhotoAsset = null;
     });
   }
 
@@ -239,7 +267,9 @@ class _SenderScreenState extends State<SenderScreen> {
     );
   }
 
-  /// Picks media (photo/video) from the gallery
+  /// Opens the multi-select gallery sheet (photos & videos).
+  /// Single selection: uses existing single-file flow.
+  /// Multiple selections: sets multi-file state for ZIP beaming.
   Future<void> _pickFromGallery() async {
     try {
       final hasPermission = await _p2pService.requestSenderPermissions();
@@ -247,22 +277,77 @@ class _SenderScreenState extends State<SenderScreen> {
         _showSnackBar('Storage/photos permission required.');
         return;
       }
-
-      final XFile? pickedFile = await _picker.pickMedia();
-      if (pickedFile == null) return;
-
-      final file = File(pickedFile.path);
-      final size = await file.length();
-      final name = pickedFile.name.isNotEmpty
-          ? pickedFile.name
-          : p.basename(file.path);
-
-      _onFileSelected(file, name, size);
-
-      // Detect in background if the picked file is a Live Photo (iOS only)
-      _detectLivePhoto(pickedFile.name);
+      await _showMultiSelectGallerySheet();
     } catch (e) {
       _showSnackBar('Error selecting media: $e');
+    }
+  }
+
+  /// Shows a multi-select photo/video grid. On confirm, sets single or multi state.
+  Future<void> _showMultiSelectGallerySheet() async {
+    final result = await PhotoManager.requestPermissionExtend();
+    if (!result.isAuth && !result.hasAccess) {
+      _showSnackBar('Photo library access required.');
+      return;
+    }
+
+    setState(() => _statusMessage = 'Loading gallery…');
+
+    final albums = await PhotoManager.getAssetPathList(type: RequestType.all);
+    if (albums.isEmpty) {
+      setState(() => _statusMessage = null);
+      _showSnackBar('No media found in your library.');
+      return;
+    }
+
+    final total = await albums.first.assetCountAsync;
+    final assets = await albums.first.getAssetListRange(
+      start: 0,
+      end: total.clamp(0, 600),
+    );
+
+    setState(() => _statusMessage = null);
+    if (!mounted) return;
+
+    final List<AssetEntity>? selected =
+        await showModalBottomSheet<List<AssetEntity>>(
+          context: context,
+          isScrollControlled: true,
+          backgroundColor: const Color(0xFF161B22),
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          builder: (ctx) => _MultiSelectGallerySheet(assets: assets),
+        );
+
+    if (selected == null || selected.isEmpty || !mounted) return;
+
+    setState(() => _statusMessage = 'Preparing files…');
+
+    final files = <File>[];
+    final names = <String>[];
+    int totalSize = 0;
+
+    for (final asset in selected) {
+      final file = await asset.file;
+      if (file == null) continue;
+      files.add(file);
+      final name = asset.title?.isNotEmpty == true
+          ? asset.title!
+          : p.basename(file.path);
+      names.add(name);
+      totalSize += await file.length();
+    }
+
+    setState(() => _statusMessage = null);
+    if (!mounted || files.isEmpty) return;
+
+    if (files.length == 1) {
+      _onFileSelected(files.first, names.first, totalSize);
+      // Background Live Photo check for single image
+      _detectLivePhoto(names.first);
+    } else {
+      _onMultiFilesSelected(files, names, totalSize);
     }
   }
 
@@ -824,7 +909,7 @@ class _SenderScreenState extends State<SenderScreen> {
     }
   }
 
-  /// Picks any file/document from filesystem storage
+  /// Picks one or more files from the filesystem (multi-select enabled).
   Future<void> _pickFromFileSystem() async {
     try {
       final hasPermission = await _p2pService.requestSenderPermissions();
@@ -833,40 +918,60 @@ class _SenderScreenState extends State<SenderScreen> {
         return;
       }
 
-      final List<PlatformFile> files = await FilePicker.pickFiles(
+      final List<PlatformFile> picked = await FilePicker.pickFiles(
         type: FileType.any,
       );
 
+      if (picked.isEmpty) return;
+
+      if (picked.length == 1) {
+        final path = picked.first.path;
+        if (path == null) return;
+        final file = File(path);
+        final size = await file.length();
+        _onFileSelected(file, picked.first.name, size);
+        return;
+      }
+
+      // Multiple files selected
+      final files = <File>[];
+      final names = <String>[];
+      int totalSize = 0;
+      for (final pf in picked) {
+        if (pf.path == null) continue;
+        final f = File(pf.path!);
+        files.add(f);
+        names.add(pf.name);
+        totalSize += await f.length();
+      }
       if (files.isEmpty) return;
-
-      final selected = files.first;
-      final path = selected.path;
-      if (path == null) return;
-
-      final file = File(path);
-      final size = await file.length();
-      final name = selected.name;
-
-      _onFileSelected(file, name, size);
+      _onMultiFilesSelected(files, names, totalSize);
     } catch (e) {
       _showSnackBar('Error picking file: $e');
     }
   }
 
-  /// Starts the local HTTP streaming server or cloud relay and generates the QR code payload
+  /// Starts the local HTTP streaming server or cloud relay and generates the QR payload.
+  /// When multiple files are selected they are zipped first.
   Future<void> _startBeaming() async {
     if (_selectedVideo == null) return;
 
+    final isMulti = _multiFiles.length > 1;
+
     setState(() {
       _isInitializing = true;
-      _statusMessage = _isOnlineMode
+      _statusMessage = isMulti
+          ? 'Packaging ${_multiFiles.length} files into ZIP…'
+          : _isOnlineMode
           ? 'Uploading to high-speed online cloud relay...'
           : 'Initializing local P2P network & server...';
     });
 
     try {
       final BeamPayload payload;
-      if (_isOnlineMode) {
+      if (isMulti) {
+        payload = await _p2pService.zipAndHost(_multiFiles);
+      } else if (_isOnlineMode) {
         payload = await _p2pService.startOnlineHosting(_selectedVideo!);
       } else {
         payload = await _p2pService.startHosting(_selectedVideo!);
@@ -875,7 +980,9 @@ class _SenderScreenState extends State<SenderScreen> {
       setState(() {
         _payload = payload;
         _isInitializing = false;
-        _statusMessage = _isOnlineMode
+        _statusMessage = isMulti
+            ? '${_multiFiles.length} files zipped & ready! Receiver can scan.'
+            : _isOnlineMode
             ? 'Online link ready! Receiver can scan or paste link from any network.'
             : 'Waiting for receiver to scan QR code...';
       });
@@ -884,7 +991,7 @@ class _SenderScreenState extends State<SenderScreen> {
         _isInitializing = false;
         _statusMessage = null;
       });
-      _showSnackBar('Failed to host video: $e');
+      _showSnackBar('Failed to host: $e');
     }
   }
 
@@ -1058,7 +1165,144 @@ class _SenderScreenState extends State<SenderScreen> {
                 ),
               ),
             ),
+          ] else if (_multiFiles.length > 1) ...[
+            // ── Multi-file card ──
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFF21262D),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: Colors.indigoAccent.withValues(alpha: 0.35),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF4F46E5), Color(0xFF7C3AED)],
+                          ),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(
+                          Icons.folder_zip_rounded,
+                          color: Colors.white,
+                          size: 22,
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '${_multiFiles.length} files selected',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 15,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              'Total: ${_formatBytes(_multiTotalSize)} • will be sent as ZIP',
+                              style: const TextStyle(
+                                color: Colors.white54,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (_payload == null)
+                        IconButton(
+                          icon: const Icon(
+                            Icons.swap_horiz_rounded,
+                            color: Colors.white70,
+                            size: 24,
+                          ),
+                          onPressed: _showSourceBottomSheet,
+                          tooltip: 'Change selection',
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  const Divider(color: Colors.white12, height: 1),
+                  const SizedBox(height: 8),
+                  // File name chips
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      ..._multiFileNames
+                          .take(8)
+                          .map(
+                            (name) => Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF30363D),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    _getFileIcon(name),
+                                    color: _getFileColor(name),
+                                    size: 12,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  ConstrainedBox(
+                                    constraints: const BoxConstraints(
+                                      maxWidth: 120,
+                                    ),
+                                    child: Text(
+                                      name,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        color: Colors.white70,
+                                        fontSize: 11,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                      if (_multiFileNames.length > 8)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF30363D),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '+${_multiFileNames.length - 8} more',
+                            style: const TextStyle(
+                              color: Colors.white38,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
           ] else ...[
+            // ── Single file card ──
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
@@ -2033,5 +2277,294 @@ class _SenderScreenState extends State<SenderScreen> {
       return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
     }
     return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Multi-Select Gallery Sheet
+// ---------------------------------------------------------------------------
+
+/// Full-screen bottom sheet that lets the user pick one or more photos/videos.
+/// Returns a [List<AssetEntity>] on confirm, or null if cancelled.
+class _MultiSelectGallerySheet extends StatefulWidget {
+  const _MultiSelectGallerySheet({required this.assets});
+
+  final List<AssetEntity> assets;
+
+  @override
+  State<_MultiSelectGallerySheet> createState() =>
+      _MultiSelectGallerySheetState();
+}
+
+class _MultiSelectGallerySheetState extends State<_MultiSelectGallerySheet> {
+  // Ordered list of selected assets (preserves selection order)
+  final List<AssetEntity> _selected = [];
+
+  bool _isSelected(AssetEntity asset) => _selected.any((a) => a.id == asset.id);
+
+  int _selectionIndex(AssetEntity asset) {
+    final idx = _selected.indexWhere((a) => a.id == asset.id);
+    return idx == -1 ? -1 : idx + 1; // 1-based
+  }
+
+  void _toggle(AssetEntity asset) {
+    setState(() {
+      final idx = _selected.indexWhere((a) => a.id == asset.id);
+      if (idx == -1) {
+        _selected.add(asset);
+      } else {
+        _selected.removeAt(idx);
+      }
+    });
+  }
+
+  String _formatBytes(int bytes) {
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(0)} KB';
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DraggableScrollableSheet(
+      initialChildSize: 0.92,
+      maxChildSize: 0.96,
+      minChildSize: 0.5,
+      expand: false,
+      builder: (ctx, scrollCtrl) => Column(
+        children: [
+          // Drag handle
+          Container(
+            margin: const EdgeInsets.only(top: 10, bottom: 4),
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.white24,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          // Header
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 6, 8, 10),
+            child: Row(
+              children: [
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Select Photos & Videos',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      SizedBox(height: 2),
+                      Text(
+                        'Tap to select • tap again to deselect',
+                        style: TextStyle(color: Colors.white38, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close_rounded, color: Colors.white54),
+                  onPressed: () => Navigator.of(ctx).pop(),
+                ),
+              ],
+            ),
+          ),
+          const Divider(color: Colors.white12, height: 1),
+          // Grid
+          Expanded(
+            child: GridView.builder(
+              controller: scrollCtrl,
+              padding: const EdgeInsets.fromLTRB(3, 3, 3, 100),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                crossAxisSpacing: 2,
+                mainAxisSpacing: 2,
+              ),
+              itemCount: widget.assets.length,
+              itemBuilder: (ctx, i) {
+                final asset = widget.assets[i];
+                final selIdx = _selectionIndex(asset);
+                final isSel = selIdx != -1;
+
+                return ClipRRect(
+                  borderRadius: BorderRadius.circular(3),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: () => _toggle(asset),
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          // Thumbnail
+                          FutureBuilder<Uint8List?>(
+                            future: asset.thumbnailDataWithSize(
+                              const ThumbnailSize(200, 200),
+                            ),
+                            builder: (_, snap) {
+                              if (snap.hasData && snap.data != null) {
+                                return Image.memory(
+                                  snap.data!,
+                                  fit: BoxFit.cover,
+                                );
+                              }
+                              return Container(
+                                color: const Color(0xFF21262D),
+                                child: const Center(
+                                  child: SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white24,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                          // Dark overlay when selected
+                          if (isSel)
+                            Container(
+                              color: Colors.black.withValues(alpha: 0.35),
+                            ),
+                          // Video duration badge
+                          if (asset.type == AssetType.video)
+                            Positioned(
+                              bottom: 4,
+                              left: 4,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 4,
+                                  vertical: 1,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.black54,
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(
+                                      Icons.videocam_rounded,
+                                      color: Colors.white,
+                                      size: 9,
+                                    ),
+                                    const SizedBox(width: 2),
+                                    Text(
+                                      '${asset.duration}s',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 9,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          // Selection circle (top-right)
+                          Positioned(
+                            top: 5,
+                            right: 5,
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 150),
+                              width: 22,
+                              height: 22,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: isSel
+                                    ? Colors.indigoAccent
+                                    : Colors.transparent,
+                                border: Border.all(
+                                  color: isSel
+                                      ? Colors.indigoAccent
+                                      : Colors.white70,
+                                  width: 2,
+                                ),
+                              ),
+                              child: isSel
+                                  ? Center(
+                                      child: Text(
+                                        '$selIdx',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    )
+                                  : null,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          // Bottom action bar
+          AnimatedSlide(
+            duration: const Duration(milliseconds: 200),
+            offset: _selected.isEmpty ? const Offset(0, 1) : Offset.zero,
+            child: AnimatedOpacity(
+              duration: const Duration(milliseconds: 200),
+              opacity: _selected.isEmpty ? 0 : 1,
+              child: SafeArea(
+                child: Container(
+                  margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                  child: ElevatedButton(
+                    onPressed: _selected.isEmpty
+                        ? null
+                        : () =>
+                              Navigator.of(context)
+                                  .pop(List<AssetEntity>.from(_selected)),
+                    style: ElevatedButton.styleFrom(
+                      minimumSize: const Size(double.infinity, 52),
+                      backgroundColor: Colors.indigoAccent,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.bolt_rounded, size: 20),
+                        const SizedBox(width: 8),
+                        Text(
+                          _selected.isEmpty
+                              ? 'Select files'
+                              : 'Beam ${_selected.length} file${_selected.length == 1 ? "" : "s"}',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        if (_selected.isNotEmpty) ...[
+                          const SizedBox(width: 6),
+                          Text(
+                            '(${_formatBytes(_selected.fold<int>(0, (int sum, a) => sum + (a.size as int)))})',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: Colors.white70,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

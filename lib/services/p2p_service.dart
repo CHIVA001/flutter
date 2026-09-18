@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:ui' as ui;
 
+import 'package:archive/archive_io.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_p2p_connection/flutter_p2p_connection.dart';
 import 'package:gal/gal.dart';
@@ -979,10 +980,18 @@ class P2pService {
 
   /// Automatically exports downloaded photos & videos directly into the device's
   /// native Photos / Gallery app on both iOS and Android.
+  /// If the file is a `.zip` (multi-file beam), each contained file is extracted
+  /// and saved individually.
   Future<bool> _saveToDeviceGallery(File file) async {
     final ext = p.extension(file.path).toLowerCase();
-    final isImage = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp'].contains(ext);
-    final isVideo = ['.mp4', '.mov', '.mkv', '.avi', '.webm'].contains(ext);
+
+    // Auto-unzip multi-file beams
+    if (ext == '.zip') return _unzipAndSaveAll(file);
+
+    final isImage =
+        ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp'].contains(ext);
+    final isVideo =
+        ['.mp4', '.mov', '.mkv', '.avi', '.webm'].contains(ext);
 
     if (!isImage && !isVideo) return false;
 
@@ -1009,6 +1018,67 @@ class P2pService {
       debugPrint('Gal save to gallery note: $e');
     }
     return false;
+  }
+
+  /// Extracts a `.zip` archive and saves every contained image/video to Gallery.
+  Future<bool> _unzipAndSaveAll(File zipFile) async {
+    try {
+      final tmpDir = await getTemporaryDirectory();
+      final extractDir = Directory(
+        '${tmpDir.path}/beam_extract_${DateTime.now().millisecondsSinceEpoch}',
+      );
+      await extractDir.create(recursive: true);
+
+      final bytes = await zipFile.readAsBytes();
+      final archive = ZipDecoder().decodeBytes(bytes);
+
+      int saved = 0;
+      for (final entry in archive.files) {
+        if (!entry.isFile) continue;
+        // Flatten path: only keep the filename (ignore sub-folders in zip)
+        final entryName = p.basename(entry.name);
+        if (entryName.isEmpty) continue;
+
+        final outFile = File('${extractDir.path}/$entryName');
+        await outFile.writeAsBytes(entry.content as List<int>);
+        debugPrint('Extracted: $entryName');
+
+        if (await _saveToDeviceGallery(outFile)) saved++;
+      await outFile.delete().catchError((_) => outFile);
+      }
+
+      await extractDir.delete(recursive: true).catchError((_) => extractDir);
+      debugPrint('ZIP: saved $saved / ${archive.files.length} files to gallery');
+      return saved > 0;
+    } catch (e) {
+      debugPrint('ZIP unzip error: $e');
+      return false;
+    }
+  }
+
+  /// Packages [files] into a temporary ZIP archive and hosts it as a single
+  /// BeamQR transfer. The receiver automatically unzips all contained files.
+  Future<BeamPayload> zipAndHost(
+    List<File> files, {
+    int port = 8888,
+  }) async {
+    final tmpDir = await getTemporaryDirectory();
+    final ts = DateTime.now().millisecondsSinceEpoch;
+    final zipPath = '${tmpDir.path}/BeamQR_$ts.zip';
+
+    debugPrint('Creating ZIP with ${files.length} files → $zipPath');
+
+    final encoder = ZipFileEncoder();
+    encoder.create(zipPath);
+    for (final file in files) {
+      if (await file.exists()) {
+        await encoder.addFile(file);
+        debugPrint('  + ${p.basename(file.path)}');
+      }
+    }
+    encoder.closeSync();
+
+    return startHosting(File(zipPath), port: port);
   }
 
   /// Total service disposal
