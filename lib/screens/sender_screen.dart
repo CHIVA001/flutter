@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as p;
+import 'package:photo_manager/photo_manager.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../models/beam_payload.dart';
@@ -258,40 +259,280 @@ class _SenderScreenState extends State<SenderScreen> {
     }
   }
 
-  /// iOS only: picks a Live Photo from the gallery and exports its motion .mov clip.
-  /// Uses pickVideo(source: gallery) which causes iOS to present the native
-  /// photo picker — when the user picks a Live Photo, the .mov motion is exported.
+  /// iOS only: shows a Live Photo grid picker using photo_manager.
+  /// Filters to assets that are Live Photos (isLivePhoto == true), displays
+  /// their photo thumbnail with a LIVE badge, and extracts the .mov motion
+  /// clip when the user selects one.
   Future<void> _pickLivePhotoAsVideo() async {
     try {
-      final hasPermission = await _p2pService.requestSenderPermissions();
-      if (!hasPermission) {
-        _showSnackBar('Photos permission required.');
+      // Request photo library permission via photo_manager
+      final PermissionState result =
+          await PhotoManager.requestPermissionExtend();
+      if (!result.isAuth && !result.hasAccess) {
+        if (!mounted) return;
+        _showSnackBar('Photo library access is required to view Live Photos.');
         return;
       }
 
-      final XFile? pickedFile = await _picker.pickVideo(
-        source: ImageSource.gallery,
+      setState(() => _statusMessage = 'Scanning for Live Photos…');
+
+      // RequestType.video on iOS includes Live Photo motion clips alongside
+      // regular videos — filter by isLivePhoto to get only Live Photos.
+      final List<AssetPathEntity> albums = await PhotoManager.getAssetPathList(
+        type: RequestType.video,
       );
 
-      if (pickedFile == null) return;
+      final allLivePhotos = <AssetEntity>{};
+      for (final album in albums) {
+        final count = await album.assetCountAsync;
+        if (count == 0) continue;
+        final assets = await album.getAssetListRange(start: 0, end: count);
+        for (final asset in assets) {
+          if (asset.isLivePhoto) allLivePhotos.add(asset);
+        }
+      }
 
-      final file = File(pickedFile.path);
-      final size = await file.length();
-      // Rename to .mov so receiver knows it is a video
-      final rawName = pickedFile.name.isNotEmpty
-          ? pickedFile.name
+      setState(() => _statusMessage = null);
+      if (!mounted) return;
+
+      if (allLivePhotos.isEmpty) {
+        _showSnackBar(
+          'No Live Photos found. Live Photos require iPhone 6s (iOS 9+) or later.',
+        );
+        return;
+      }
+
+      // Show the photo-style grid bottom sheet
+      final AssetEntity? selected = await _showLivePhotoGridSheet(
+        allLivePhotos.toList(),
+      );
+      if (selected == null || !mounted) return;
+
+      // Get the .mov motion file from the selected Live Photo
+      final File? file = await selected.file;
+      if (file == null || !await file.exists()) {
+        _showSnackBar('Could not extract Live Photo motion video.');
+        return;
+      }
+
+      final int size = await file.length();
+      final String rawName = selected.title?.isNotEmpty == true
+          ? selected.title!
           : p.basename(file.path);
-      final name =
+      final String name =
           rawName.toLowerCase().endsWith('.mov') ||
               rawName.toLowerCase().endsWith('.mp4')
           ? rawName
           : '${p.basenameWithoutExtension(rawName)}.mov';
 
       _onFileSelected(file, name, size);
+      if (!mounted) return;
       _showSnackBar('Live Photo motion clip selected \u2705');
     } catch (e) {
-      _showSnackBar('Error picking Live Photo: $e');
+      setState(() => _statusMessage = null);
+      _showSnackBar('Error loading Live Photos: $e');
     }
+  }
+
+  /// Shows a full-screen draggable grid of Live Photos.
+  /// Each cell shows the photo thumbnail + LIVE badge + duration.
+  /// Returns the selected [AssetEntity] or null if cancelled.
+  Future<AssetEntity?> _showLivePhotoGridSheet(List<AssetEntity> assets) {
+    return showModalBottomSheet<AssetEntity>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF161B22),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.75,
+        maxChildSize: 0.96,
+        minChildSize: 0.45,
+        expand: false,
+        builder: (_, scrollCtrl) => Column(
+          children: [
+            // Drag handle
+            Container(
+              margin: const EdgeInsets.only(top: 10, bottom: 4),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.white24,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            // Header
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 8, 10),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF059669), Color(0xFF10B981)],
+                      ),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(
+                      Icons.motion_photos_on_rounded,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Live Photos',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                        Text(
+                          '${assets.length} found — tap to beam motion clip',
+                          style: const TextStyle(
+                            color: Colors.white54,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(
+                      Icons.close_rounded,
+                      color: Colors.white54,
+                    ),
+                    onPressed: () => Navigator.of(ctx).pop(),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(color: Colors.white12, height: 1),
+            // Photo grid
+            Expanded(
+              child: GridView.builder(
+                controller: scrollCtrl,
+                padding: const EdgeInsets.all(4),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3,
+                  crossAxisSpacing: 3,
+                  mainAxisSpacing: 3,
+                ),
+                itemCount: assets.length,
+                itemBuilder: (ctx, index) {
+                  final asset = assets[index];
+                  return GestureDetector(
+                    onTap: () => Navigator.of(ctx).pop(asset),
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        // Photo thumbnail
+                        FutureBuilder<Uint8List?>(
+                          future: asset.thumbnailDataWithSize(
+                            const ThumbnailSize(200, 200),
+                          ),
+                          builder: (ctx, snap) {
+                            if (snap.hasData && snap.data != null) {
+                              return ClipRRect(
+                                borderRadius: BorderRadius.circular(4),
+                                child: Image.memory(
+                                  snap.data!,
+                                  fit: BoxFit.cover,
+                                ),
+                              );
+                            }
+                            return Container(
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF21262D),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: const Center(
+                                child: SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white30,
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                        // LIVE badge (top-left)
+                        Positioned(
+                          top: 4,
+                          left: 4,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 5,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.65),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.motion_photos_on_rounded,
+                                  color: Colors.white,
+                                  size: 9,
+                                ),
+                                SizedBox(width: 2),
+                                Text(
+                                  'LIVE',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        // Duration badge (bottom-right)
+                        Positioned(
+                          bottom: 4,
+                          right: 4,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 4,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.6),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              '${asset.duration}s',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 9,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   /// Captures video or photo from camera
