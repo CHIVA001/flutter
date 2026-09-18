@@ -100,6 +100,48 @@ class _SenderScreenState extends State<SenderScreen> {
     });
   }
 
+  /// Clears the current file selection.
+  void _clearSelection() {
+    setState(() {
+      _selectedVideo = null;
+      _videoSize = null;
+      _videoName = null;
+      _payload = null;
+      _progress = TransferProgress.idle();
+      _statusMessage = null;
+      _livePhotoAsset = null;
+      _multiFiles = [];
+      _multiFileNames = [];
+      _multiTotalSize = 0;
+    });
+  }
+
+  /// Removes a single file from the multi-file selection list.
+  Future<void> _removeMultiFile(int index) async {
+    if (index < 0 || index >= _multiFiles.length) return;
+    if (_multiFiles.length <= 1) {
+      _clearSelection();
+      return;
+    }
+
+    final updatedFiles = List<File>.from(_multiFiles)..removeAt(index);
+    final updatedNames = List<String>.from(_multiFileNames)..removeAt(index);
+
+    if (updatedFiles.length == 1) {
+      final file = updatedFiles.first;
+      final name = updatedNames.first;
+      final size = await file.length();
+      _onFileSelected(file, name, size);
+      _detectLivePhoto(name);
+    } else {
+      int totalSize = 0;
+      for (final f in updatedFiles) {
+        totalSize += await f.length();
+      }
+      _onMultiFilesSelected(updatedFiles, updatedNames, totalSize);
+    }
+  }
+
   /// Shows the bottom sheet with source options: Photo/Video Gallery, Camera, and Files
   void _showSourceBottomSheet() {
     showModalBottomSheet(
@@ -1272,16 +1314,26 @@ class _SenderScreenState extends State<SenderScreen> {
                           ],
                         ),
                       ),
-                      if (_payload == null)
+                      if (_payload == null) ...[
                         IconButton(
                           icon: const Icon(
                             Icons.swap_horiz_rounded,
                             color: Colors.white70,
-                            size: 24,
+                            size: 22,
                           ),
                           onPressed: _showSourceBottomSheet,
                           tooltip: 'Change selection',
                         ),
+                        IconButton(
+                          icon: const Icon(
+                            Icons.close_rounded,
+                            color: Colors.redAccent,
+                            size: 22,
+                          ),
+                          onPressed: _clearSelection,
+                          tooltip: 'Remove all files',
+                        ),
+                      ],
                     ],
                   ),
                   const SizedBox(height: 10),
@@ -1331,6 +1383,17 @@ class _SenderScreenState extends State<SenderScreen> {
                                     ),
                                   ),
                                 ),
+                                if (_payload == null) ...[
+                                  const SizedBox(width: 4),
+                                  GestureDetector(
+                                    onTap: () => _removeMultiFile(idx),
+                                    child: const Icon(
+                                      Icons.close_rounded,
+                                      color: Colors.white54,
+                                      size: 13,
+                                    ),
+                                  ),
+                                ],
                               ],
                             ),
                           ),
@@ -1480,16 +1543,26 @@ class _SenderScreenState extends State<SenderScreen> {
                           ),
                         ),
                       ),
-                      if (_payload == null)
+                      if (_payload == null) ...[
                         IconButton(
                           icon: const Icon(
                             Icons.swap_horiz_rounded,
                             color: Colors.white70,
-                            size: 24,
+                            size: 22,
                           ),
                           onPressed: _showSourceBottomSheet,
                           tooltip: 'Change Source',
                         ),
+                        IconButton(
+                          icon: const Icon(
+                            Icons.close_rounded,
+                            color: Colors.redAccent,
+                            size: 22,
+                          ),
+                          onPressed: _clearSelection,
+                          tooltip: 'Remove file',
+                        ),
+                      ],
                     ],
                   ),
                   // “Use motion clip” button — only shown when Live Photo detected
