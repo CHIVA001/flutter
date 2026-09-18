@@ -98,7 +98,6 @@ class _ReceiverScreenState extends State<ReceiverScreen>
             _scannedPayload = payload;
             _errorMessage = null;
           });
-          _scannerController.stop();
           _showTransferConfirmationDialog(payload);
           break;
         } catch (e) {
@@ -393,7 +392,9 @@ class _ReceiverScreenState extends State<ReceiverScreen>
                       child: OutlinedButton(
                         onPressed: () {
                           Navigator.of(ctx).pop();
-                          _resetScanner();
+                          setState(() {
+                            _scannedPayload = null;
+                          });
                         },
                         style: OutlinedButton.styleFrom(
                           foregroundColor: Colors.white70,
@@ -738,6 +739,7 @@ class _ReceiverScreenState extends State<ReceiverScreen>
 
   /// Initiates video download from the sender
   Future<void> _startDownloading(BeamPayload payload) async {
+    _safeStopScanner();
     setState(() {
       _isDownloading = true;
       _errorMessage = null;
@@ -757,6 +759,29 @@ class _ReceiverScreenState extends State<ReceiverScreen>
     }
   }
 
+  /// Safely starts scanner camera without crashing on concurrent starts
+  Future<void> _safeStartScanner() async {
+    try {
+      if (!mounted) return;
+      if (!_scannerController.value.isRunning) {
+        await _scannerController.start();
+      }
+    } catch (e) {
+      debugPrint('Safe scanner start notice: $e');
+    }
+  }
+
+  /// Safely stops scanner camera
+  Future<void> _safeStopScanner() async {
+    try {
+      if (_scannerController.value.isRunning) {
+        await _scannerController.stop();
+      }
+    } catch (e) {
+      debugPrint('Safe scanner stop notice: $e');
+    }
+  }
+
   /// Resets scanner to look for another QR code
   void _resetScanner() {
     setState(() {
@@ -766,7 +791,7 @@ class _ReceiverScreenState extends State<ReceiverScreen>
       _isDownloading = false;
       _progress = TransferProgress.idle();
     });
-    _scannerController.start();
+    _safeStartScanner();
   }
 
   @override
