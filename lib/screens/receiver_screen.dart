@@ -211,13 +211,16 @@ class _ReceiverScreenState extends State<ReceiverScreen>
                               ),
                             ),
                             const Spacer(),
-                            Text(
-                              payload.password!,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w600,
-                                fontSize: 13,
-                                fontFamily: 'monospace',
+                            Flexible(
+                              child: Text(
+                                payload.password!,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 13,
+                                  fontFamily: 'monospace',
+                                ),
                               ),
                             ),
                             const SizedBox(width: 8),
@@ -581,14 +584,19 @@ class _ReceiverScreenState extends State<ReceiverScreen>
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
-                    'Downloading Stream...',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
+                  const Expanded(
+                    child: Text(
+                      'Downloading Stream...',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
+                  const SizedBox(width: 8),
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 10,
@@ -633,9 +641,14 @@ class _ReceiverScreenState extends State<ReceiverScreen>
                       fontSize: 18,
                     ),
                   ),
-                  Text(
-                    _progress.formattedTransferredSize,
-                    style: const TextStyle(color: Colors.white60, fontSize: 13),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      _progress.formattedTransferredSize,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: Colors.white60, fontSize: 13),
+                    ),
                   ),
                 ],
               ),

@@ -709,24 +709,31 @@ class _SenderScreenState extends State<SenderScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Row(
-                      children: [
-                        Icon(
-                          Icons.wifi_rounded,
-                          color: Colors.indigoAccent,
-                          size: 18,
-                        ),
-                        SizedBox(width: 8),
-                        Text(
-                          'Direct Wi-Fi Hotspot',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 13,
-                            fontWeight: FontWeight.bold,
+                    const Expanded(
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.wifi_rounded,
+                            color: Colors.indigoAccent,
+                            size: 18,
                           ),
-                        ),
-                      ],
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Direct Wi-Fi Hotspot',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
+                    const SizedBox(width: 8),
                     InkWell(
                       onTap: () {
                         Clipboard.setData(
@@ -826,14 +833,19 @@ class _SenderScreenState extends State<SenderScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text(
-              'Uploading Video...',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
+            const Expanded(
+              child: Text(
+                'Uploading Video...',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
+            const SizedBox(width: 8),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
@@ -875,9 +887,14 @@ class _SenderScreenState extends State<SenderScreen> {
                 fontSize: 16,
               ),
             ),
-            Text(
-              _progress.formattedTransferredSize,
-              style: const TextStyle(color: Colors.white54, fontSize: 13),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                _progress.formattedTransferredSize,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: Colors.white54, fontSize: 13),
+              ),
             ),
           ],
         ),
