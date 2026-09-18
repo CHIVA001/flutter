@@ -113,176 +113,223 @@ class _ReceiverScreenState extends State<ReceiverScreen>
       context: context,
       isDismissible: false,
       enableDrag: false,
+      isScrollControlled: true,
       backgroundColor: const Color(0xFF161B22),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
       builder: (ctx) {
-        return Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
+        return SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.cyanAccent.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: const Icon(
+                        Icons.download_rounded,
+                        color: Colors.cyanAccent,
+                        size: 28,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Beam Incoming Video',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Text(
+                            'Sender verified & ready to stream',
+                            style: TextStyle(
+                              color: Colors.white60,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF21262D),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Column(
+                    children: [
+                      _buildMetaRow(
+                        Icons.movie_outlined,
+                        'File Name',
+                        payload.fileName,
+                      ),
+                      const Divider(color: Colors.white12, height: 16),
+                      _buildMetaRow(
+                        Icons.data_usage_rounded,
+                        'File Size',
+                        payload.formattedSize,
+                      ),
+                      if (payload.ssid != null) ...[
+                        const Divider(color: Colors.white12, height: 16),
+                        _buildMetaRow(
+                          Icons.wifi,
+                          'Wi-Fi Hotspot',
+                          payload.ssid!,
+                        ),
+                      ],
+                      if (payload.password != null) ...[
+                        const Divider(color: Colors.white12, height: 16),
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.lock_outline,
+                              color: Colors.cyanAccent,
+                              size: 18,
+                            ),
+                            const SizedBox(width: 10),
+                            const Text(
+                              'Password',
+                              style: TextStyle(
+                                color: Colors.white60,
+                                fontSize: 13,
+                              ),
+                            ),
+                            const Spacer(),
+                            Text(
+                              payload.password!,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                                fontFamily: 'monospace',
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            InkWell(
+                              onTap: () {
+                                Clipboard.setData(
+                                  ClipboardData(text: payload.password!),
+                                );
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Password copied'),
+                                    behavior: SnackBarBehavior.floating,
+                                    duration: Duration(seconds: 1),
+                                  ),
+                                );
+                              },
+                              child: const Icon(
+                                Icons.copy,
+                                color: Colors.cyanAccent,
+                                size: 14,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                      const Divider(color: Colors.white12, height: 16),
+                      _buildMetaRow(
+                        Icons.lan_outlined,
+                        'Stream IP',
+                        '${payload.ip}:${payload.port}',
+                      ),
+                    ],
+                  ),
+                ),
+                if (Platform.isIOS && payload.ssid != null) ...[
+                  const SizedBox(height: 12),
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.cyanAccent.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(14),
+                      color: Colors.cyanAccent.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: Colors.cyanAccent.withValues(alpha: 0.2),
+                      ),
                     ),
-                    child: const Icon(Icons.download_rounded,
-                        color: Colors.cyanAccent, size: 28),
-                  ),
-                  const SizedBox(width: 16),
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    child: Row(
                       children: [
-                        Text(
-                          'Beam Incoming Video',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
+                        const Icon(
+                          Icons.info_outline,
+                          color: Colors.cyanAccent,
+                          size: 16,
                         ),
-                        Text(
-                          'Sender verified & ready to stream',
-                          style: TextStyle(color: Colors.white60, fontSize: 12),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'iOS: If prompt appears, tap Join to connect to ${payload.ssid}.',
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 11,
+                            ),
+                          ),
                         ),
                       ],
                     ),
                   ),
                 ],
-              ),
-              const SizedBox(height: 20),
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF21262D),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Column(
+                const SizedBox(height: 24),
+                Row(
                   children: [
-                    _buildMetaRow(Icons.movie_outlined, 'File Name', payload.fileName),
-                    const Divider(color: Colors.white12, height: 16),
-                    _buildMetaRow(Icons.data_usage_rounded, 'File Size', payload.formattedSize),
-                    if (payload.ssid != null) ...[
-                      const Divider(color: Colors.white12, height: 16),
-                      _buildMetaRow(Icons.wifi, 'Wi-Fi Hotspot', payload.ssid!),
-                    ],
-                    if (payload.password != null) ...[
-                      const Divider(color: Colors.white12, height: 16),
-                      Row(
-                        children: [
-                          const Icon(Icons.lock_outline, color: Colors.cyanAccent, size: 18),
-                          const SizedBox(width: 10),
-                          const Text(
-                            'Password',
-                            style: TextStyle(color: Colors.white60, fontSize: 13),
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () {
+                          Navigator.of(ctx).pop();
+                          _resetScanner();
+                        },
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.white70,
+                          side: const BorderSide(color: Colors.white24),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
                           ),
-                          const Spacer(),
-                          Text(
-                            payload.password!,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 13,
-                              fontFamily: 'monospace',
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          InkWell(
-                            onTap: () {
-                              Clipboard.setData(ClipboardData(text: payload.password!));
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Password copied'),
-                                  behavior: SnackBarBehavior.floating,
-                                  duration: Duration(seconds: 1),
-                                ),
-                              );
-                            },
-                            child: const Icon(Icons.copy, color: Colors.cyanAccent, size: 14),
-                          ),
-                        ],
+                        ),
+                        child: const Text('Cancel'),
                       ),
-                    ],
-                    const Divider(color: Colors.white12, height: 16),
-                    _buildMetaRow(Icons.lan_outlined, 'Stream IP', '${payload.ip}:${payload.port}'),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () {
+                          Navigator.of(ctx).pop();
+                          _startDownloading(payload);
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.cyanAccent.shade700,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                        icon: const Icon(Icons.bolt, size: 20),
+                        label: const Text(
+                          'Start Download',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
-              ),
-              if (Platform.isIOS && payload.ssid != null) ...[
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.cyanAccent.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.cyanAccent.withValues(alpha: 0.2)),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.info_outline, color: Colors.cyanAccent, size: 16),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'iOS: If prompt appears, tap Join to connect to ${payload.ssid}.',
-                          style: const TextStyle(color: Colors.white70, fontSize: 11),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
               ],
-              const SizedBox(height: 24),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () {
-                        Navigator.of(ctx).pop();
-                        _resetScanner();
-                      },
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.white70,
-                        side: const BorderSide(color: Colors.white24),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                      ),
-                      child: const Text('Cancel'),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: () {
-                        Navigator.of(ctx).pop();
-                        _startDownloading(payload);
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.cyanAccent.shade700,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                      ),
-                      icon: const Icon(Icons.bolt, size: 20),
-                      label: const Text(
-                        'Start Download',
-                        style: TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
+            ),
           ),
         );
       },
@@ -373,7 +420,10 @@ class _ReceiverScreenState extends State<ReceiverScreen>
               onPressed: () => _scannerController.toggleTorch(),
             ),
             IconButton(
-              icon: const Icon(Icons.flip_camera_ios_rounded, color: Colors.white),
+              icon: const Icon(
+                Icons.flip_camera_ios_rounded,
+                color: Colors.white,
+              ),
               onPressed: () => _scannerController.switchCamera(),
             ),
           ],
@@ -403,10 +453,7 @@ class _ReceiverScreenState extends State<ReceiverScreen>
   Widget _buildScannerWithOverlay() {
     return Stack(
       children: [
-        MobileScanner(
-          controller: _scannerController,
-          onDetect: _onDetect,
-        ),
+        MobileScanner(controller: _scannerController, onDetect: _onDetect),
 
         // Semi-transparent overlay with reticle
         LayoutBuilder(
@@ -464,7 +511,9 @@ class _ReceiverScreenState extends State<ReceiverScreen>
                       animation: _scanAnimation,
                       builder: (context, child) {
                         return CustomPaint(
-                          painter: _LaserScanPainter(progress: _scanAnimation.value),
+                          painter: _LaserScanPainter(
+                            progress: _scanAnimation.value,
+                          ),
                         );
                       },
                     ),
@@ -477,7 +526,10 @@ class _ReceiverScreenState extends State<ReceiverScreen>
                   left: 20,
                   right: 20,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 14,
+                    ),
                     decoration: BoxDecoration(
                       color: const Color(0xFF161B22).withValues(alpha: 0.9),
                       borderRadius: BorderRadius.circular(16),
@@ -486,8 +538,11 @@ class _ReceiverScreenState extends State<ReceiverScreen>
                     child: const Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.qr_code_scanner_rounded,
-                            color: Colors.cyanAccent, size: 22),
+                        Icon(
+                          Icons.qr_code_scanner_rounded,
+                          color: Colors.cyanAccent,
+                          size: 22,
+                        ),
                         SizedBox(width: 12),
                         Text(
                           'Align BeamQR within the frame',
@@ -535,7 +590,10 @@ class _ReceiverScreenState extends State<ReceiverScreen>
                     ),
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.cyanAccent.withValues(alpha: 0.2),
                       borderRadius: BorderRadius.circular(20),
@@ -558,8 +616,9 @@ class _ReceiverScreenState extends State<ReceiverScreen>
                   value: _progress.fraction,
                   minHeight: 16,
                   backgroundColor: const Color(0xFF21262D),
-                  valueColor:
-                      const AlwaysStoppedAnimation<Color>(Colors.cyanAccent),
+                  valueColor: const AlwaysStoppedAnimation<Color>(
+                    Colors.cyanAccent,
+                  ),
                 ),
               ),
               const SizedBox(height: 16),
@@ -584,7 +643,11 @@ class _ReceiverScreenState extends State<ReceiverScreen>
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  const Icon(Icons.timer_outlined, color: Colors.white38, size: 14),
+                  const Icon(
+                    Icons.timer_outlined,
+                    color: Colors.white38,
+                    size: 14,
+                  ),
                   const SizedBox(width: 6),
                   Text(
                     'ETA: ${_progress.formattedEta}',
@@ -601,7 +664,10 @@ class _ReceiverScreenState extends State<ReceiverScreen>
                 style: OutlinedButton.styleFrom(
                   foregroundColor: Colors.redAccent,
                   side: const BorderSide(color: Colors.redAccent),
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 12,
+                  ),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14),
                   ),
@@ -625,7 +691,9 @@ class _ReceiverScreenState extends State<ReceiverScreen>
           decoration: BoxDecoration(
             color: const Color(0xFF161B22),
             borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: Colors.greenAccent.withValues(alpha: 0.3)),
+            border: Border.all(
+              color: Colors.greenAccent.withValues(alpha: 0.3),
+            ),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -636,8 +704,11 @@ class _ReceiverScreenState extends State<ReceiverScreen>
                   color: Colors.greenAccent.withValues(alpha: 0.15),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.download_done_rounded,
-                    color: Colors.greenAccent, size: 56),
+                child: const Icon(
+                  Icons.download_done_rounded,
+                  color: Colors.greenAccent,
+                  size: 56,
+                ),
               ),
               const SizedBox(height: 20),
               const Text(
@@ -706,8 +777,11 @@ class _ReceiverScreenState extends State<ReceiverScreen>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.error_outline_rounded,
-                  color: Colors.redAccent, size: 56),
+              const Icon(
+                Icons.error_outline_rounded,
+                color: Colors.redAccent,
+                size: 56,
+              ),
               const SizedBox(height: 16),
               const Text(
                 'Transfer Failed',

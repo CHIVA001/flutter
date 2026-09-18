@@ -240,13 +240,18 @@ class BeamHomeScreen extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
       ),
-      child: const Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          _BadgeItem(icon: Icons.flash_on, label: 'Up to 50 MB/s'),
-          _BadgeItem(icon: Icons.security, label: 'Session Token'),
-          _BadgeItem(icon: Icons.devices, label: 'Android & iOS'),
-        ],
+      child: const Center(
+        child: Wrap(
+          alignment: WrapAlignment.center,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 16,
+          runSpacing: 10,
+          children: [
+            _BadgeItem(icon: Icons.flash_on, label: 'Up to 50 MB/s'),
+            _BadgeItem(icon: Icons.security, label: 'Session Token'),
+            _BadgeItem(icon: Icons.devices, label: 'Android & iOS'),
+          ],
+        ),
       ),
     );
   }
@@ -261,6 +266,7 @@ class _BadgeItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
         Icon(icon, color: Colors.indigoAccent, size: 16),
         const SizedBox(width: 6),
