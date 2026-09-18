@@ -8,6 +8,7 @@ void main() {
         ssid: 'DIRECT-xy-BeamQR',
         password: 'secure_password_123',
         ip: '192.168.49.1',
+        candidateIps: ['192.168.49.1', '192.168.1.50'],
         port: 8888,
         fileName: 'vacation_clip.mp4',
         fileSize: 104857600, // 100 MB
@@ -20,6 +21,7 @@ void main() {
       expect(parsed.ssid, equals('DIRECT-xy-BeamQR'));
       expect(parsed.password, equals('secure_password_123'));
       expect(parsed.ip, equals('192.168.49.1'));
+      expect(parsed.candidateIps, containsAll(['192.168.49.1', '192.168.1.50']));
       expect(parsed.port, equals(8888));
       expect(parsed.fileName, equals('vacation_clip.mp4'));
       expect(parsed.fileSize, equals(104857600));

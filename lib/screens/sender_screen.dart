@@ -803,23 +803,41 @@ class _SenderScreenState extends State<SenderScreen> {
             color: const Color(0xFF21262D),
             borderRadius: BorderRadius.circular(12),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Icon(
-                Icons.lan_outlined,
-                color: Colors.indigoAccent,
-                size: 18,
+              Row(
+                children: [
+                  const Icon(
+                    Icons.lan_outlined,
+                    color: Colors.indigoAccent,
+                    size: 18,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Stream Server: ${_payload!.ip}:${_payload!.port}',
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 12,
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(width: 8),
-              Text(
-                'Stream Server: ${_payload!.ip}:${_payload!.port}',
-                style: const TextStyle(
-                  color: Colors.white70,
-                  fontSize: 12,
-                  fontFamily: 'monospace',
+              if (_payload!.candidateIps.length > 1) ...[
+                const SizedBox(height: 6),
+                Text(
+                  'Candidates: ${_payload!.candidateIps.join(", ")}',
+                  style: const TextStyle(
+                    color: Colors.white38,
+                    fontSize: 11,
+                    fontFamily: 'monospace',
+                  ),
                 ),
-              ),
+              ],
             ],
           ),
         ),

@@ -647,7 +647,10 @@ class _ReceiverScreenState extends State<ReceiverScreen>
                       _progress.formattedTransferredSize,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: Colors.white60, fontSize: 13),
+                      style: const TextStyle(
+                        color: Colors.white60,
+                        fontSize: 13,
+                      ),
                     ),
                   ),
                 ],
@@ -777,9 +780,10 @@ class _ReceiverScreenState extends State<ReceiverScreen>
   }
 
   Widget _buildErrorView() {
+    final payload = _scannedPayload;
     return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(28),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
         child: Container(
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
@@ -791,13 +795,13 @@ class _ReceiverScreenState extends State<ReceiverScreen>
             mainAxisSize: MainAxisSize.min,
             children: [
               const Icon(
-                Icons.error_outline_rounded,
+                Icons.wifi_off_rounded,
                 color: Colors.redAccent,
                 size: 56,
               ),
               const SizedBox(height: 16),
               const Text(
-                'Transfer Failed',
+                'Connection Failed',
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 18,
@@ -806,21 +810,120 @@ class _ReceiverScreenState extends State<ReceiverScreen>
               ),
               const SizedBox(height: 10),
               Text(
-                _errorMessage ?? 'Unknown error occurred.',
+                _errorMessage ?? 'Failed to connect to sender.',
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.white60, fontSize: 13),
+                style: const TextStyle(color: Colors.white70, fontSize: 13),
               ),
-              const SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: _resetScanner,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.indigoAccent,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
+              if (payload != null &&
+                  payload.ssid != null &&
+                  payload.password != null) ...[
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF21262D),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.white12),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Connect your device Wi-Fi to:',
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'SSID: ${payload.ssid}',
+                        style: const TextStyle(
+                          color: Colors.cyanAccent,
+                          fontSize: 12,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'Password: ${payload.password}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontFamily: 'monospace',
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                          InkWell(
+                            onTap: () {
+                              Clipboard.setData(
+                                ClipboardData(text: payload.password!),
+                              );
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Password copied to clipboard'),
+                                  behavior: SnackBarBehavior.floating,
+                                  duration: Duration(seconds: 1),
+                                ),
+                              );
+                            },
+                            child: const Padding(
+                              padding: EdgeInsets.all(4),
+                              child: Icon(
+                                Icons.copy,
+                                color: Colors.cyanAccent,
+                                size: 14,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
-                child: const Text('Try Again'),
+              ],
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _resetScanner,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white70,
+                        side: const BorderSide(color: Colors.white24),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                      child: const Text('Scan Again'),
+                    ),
+                  ),
+                  if (payload != null) ...[
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () => _startDownloading(payload),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.cyanAccent.shade700,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                        icon: const Icon(Icons.refresh, size: 18),
+                        label: const Text(
+                          'Retry',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ],
           ),

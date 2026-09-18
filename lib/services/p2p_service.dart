@@ -114,7 +114,11 @@ class P2pService {
 
   /// Initializes local Wi-Fi Direct group or ad-hoc AP, binds a high-speed
   /// HTTP file server, and generates a [BeamPayload] for QR code rendering.
-  Future<BeamPayload> startHosting(File videoFile, {int port = 8888}) async {
+  Future<BeamPayload> startHosting(
+    File videoFile, {
+    int port = 8888,
+    bool enableWifiDirect = true,
+  }) async {
     if (!await videoFile.exists()) {
       throw FileSystemException(
         'Selected video file does not exist',
@@ -132,10 +136,14 @@ class P2pService {
 
     String? hotspotSsid;
     String? hotspotPassword;
-    String? hostIp;
+    final candidateIps = <String>{};
 
-    // 1. Attempt Wi-Fi Direct group initialization on Android
-    if (Platform.isAndroid) {
+    // 1. Discover pre-existing network interfaces (e.g. connected Wi-Fi router / Hotspot)
+    final existingIps = await _findAllLocalIpAddresses();
+    candidateIps.addAll(existingIps);
+
+    // 2. Attempt Wi-Fi Direct group initialization on Android if enabled
+    if (Platform.isAndroid && enableWifiDirect) {
       try {
         _p2pHost = FlutterP2pHost();
         await _p2pHost!.initialize();
@@ -146,21 +154,52 @@ class P2pService {
         if (hostState.isActive) {
           hotspotSsid = hostState.ssid;
           hotspotPassword = hostState.preSharedKey;
-          hostIp = hostState.hostIpAddress;
+          if (hostState.hostIpAddress != null &&
+              hostState.hostIpAddress!.isNotEmpty) {
+            candidateIps.add(hostState.hostIpAddress!);
+          }
         }
       } catch (e) {
-        debugPrint('Wi-Fi Direct createGroup fallback to local IP: $e');
+        debugPrint('Wi-Fi Direct createGroup note: $e');
       }
     }
 
-    // 2. Discover local IP address from available network interfaces if not from P2P host
-    if (hostIp == null || hostIp.isEmpty) {
-      hostIp = await _findLocalIpAddress();
+    // Refresh interfaces to catch newly established P2P interfaces (e.g. p2p-wlan0-0)
+    final refreshedIps = await _findAllLocalIpAddresses();
+    candidateIps.addAll(refreshedIps);
+
+    // Filter out loopback and link-local addresses
+    final validIps = candidateIps
+        .where(
+          (ip) =>
+              ip.isNotEmpty && ip != '127.0.0.1' && !ip.startsWith('169.254.'),
+        )
+        .toList();
+
+    // Determine primary IP:
+    // If the device is connected to a local Wi-Fi router or hotspot (192.168.1.x, 10.x, 172.x, 192.168.43.x),
+    // prioritize that over the Wi-Fi Direct group IP (192.168.49.1) so peers on the same Wi-Fi connect directly.
+    String primaryIp;
+    final lanIp = validIps.cast<String?>().firstWhere(
+      (ip) =>
+          ip != null &&
+          !ip.startsWith('192.168.49.') &&
+          (ip.startsWith('192.168.') ||
+              ip.startsWith('10.') ||
+              ip.startsWith('172.')),
+      orElse: () => null,
+    );
+
+    if (lanIp != null) {
+      primaryIp = lanIp;
+    } else if (validIps.isNotEmpty) {
+      primaryIp = validIps.first;
+    } else {
+      primaryIp = '192.168.49.1';
     }
 
-    if (hostIp == null || hostIp.isEmpty) {
-      // Default to standard Android hotspot gateway if all lookups are empty
-      hostIp = '192.168.49.1';
+    if (!validIps.contains(primaryIp)) {
+      validIps.insert(0, primaryIp);
     }
 
     // 3. Start local HTTP streaming server bound to all IPv4 interfaces
@@ -188,10 +227,15 @@ class P2pService {
 
     _senderProgressController.add(TransferProgress.waitingForPeer());
 
+    debugPrint(
+      'Hosting on primary IP $primaryIp:$boundPort (Candidates: $validIps)',
+    );
+
     return BeamPayload(
       ssid: hotspotSsid,
       password: hotspotPassword,
-      ip: hostIp,
+      ip: primaryIp,
+      candidateIps: validIps,
       port: boundPort,
       fileName: fileName,
       fileSize: fileSize,
@@ -423,30 +467,66 @@ class P2pService {
 
     _activeFileSink = targetFile.openWrite(mode: FileMode.writeOnly);
 
-    // 3. Connect to sender's HTTP stream
-    _activeHttpClient = HttpClient()..connectionTimeout = connectionTimeout;
-
     try {
+      // 3. Connect to sender's HTTP stream
       _receiverProgressController.add(TransferProgress.waitingForPeer());
 
-      final request = await _activeHttpClient!
-          .getUrl(Uri.parse(payload.downloadUrl))
-          .timeout(
-            connectionTimeout,
-            onTimeout: () {
-              throw TimeoutException(
-                'Failed to connect to sender at ${payload.ip}:${payload.port}. Please ensure you are connected to the same Wi-Fi or Hotspot.',
-              );
-            },
-          );
+      // Build ordered list of candidate URLs to attempt:
+      // 1. payload.downloadUrl (primary)
+      // 2. all payload.candidateIps
+      final candidateUrls = <String>[];
+      candidateUrls.add(payload.downloadUrl);
+      for (final ip in payload.candidateIps) {
+        final altUrl =
+            'http://$ip:${payload.port}/stream?token=${payload.token}';
+        if (!candidateUrls.contains(altUrl)) {
+          candidateUrls.add(altUrl);
+        }
+      }
 
-      final response = await request.close();
+      _activeHttpClient = HttpClient()
+        ..connectionTimeout = const Duration(seconds: 8);
 
-      if (response.statusCode != HttpStatus.ok) {
-        throw HttpException(
-          'Download failed with HTTP ${response.statusCode}: ${response.reasonPhrase}',
+      HttpClientResponse? response;
+      String? connectedUrl;
+      Exception? lastError;
+
+      for (final targetUrl in candidateUrls) {
+        try {
+          debugPrint('Connecting to download stream at: $targetUrl');
+          final request = await _activeHttpClient!
+              .getUrl(Uri.parse(targetUrl))
+              .timeout(const Duration(seconds: 6));
+          final res = await request.close();
+          if (res.statusCode == HttpStatus.ok) {
+            response = res;
+            connectedUrl = targetUrl;
+            break;
+          } else {
+            lastError = HttpException(
+              'HTTP ${res.statusCode}: ${res.reasonPhrase}',
+              uri: Uri.parse(targetUrl),
+            );
+          }
+        } catch (e) {
+          debugPrint('Failed connecting to $targetUrl: $e');
+          lastError = e is Exception ? e : Exception(e.toString());
+        }
+      }
+
+      if (response == null) {
+        await _cleanupFailedDownload(targetFile);
+        final triedList = payload.candidateIps.isNotEmpty
+            ? payload.candidateIps.join(', ')
+            : payload.ip;
+        throw TimeoutException(
+          'Failed to connect to sender at [$triedList]:${payload.port}.\n\n'
+          'Please ensure you are connected to the same Wi-Fi or Hotspot.'
+          '${lastError != null ? " (Details: $lastError)" : ""}',
         );
       }
+
+      debugPrint('Connected successfully to stream at $connectedUrl');
 
       final totalBytes = response.contentLength > 0
           ? response.contentLength
@@ -559,8 +639,9 @@ class P2pService {
   // HELPER UTILITIES
   // ---------------------------------------------------------------------------
 
-  /// Discovers local network IP address by inspecting active interfaces
-  Future<String?> _findLocalIpAddress() async {
+  /// Discovers all available IPv4 addresses across all active network interfaces
+  Future<List<String>> _findAllLocalIpAddresses() async {
+    final ips = <String>{};
     try {
       final interfaces = await NetworkInterface.list(
         type: InternetAddressType.IPv4,
@@ -569,27 +650,17 @@ class P2pService {
 
       for (final interface in interfaces) {
         for (final addr in interface.addresses) {
-          if (!addr.isLoopback) {
-            // Prioritize standard Wi-Fi Direct or hotspot subnet addresses
-            if (addr.address.startsWith('192.168.') ||
-                addr.address.startsWith('10.') ||
-                addr.address.startsWith('172.')) {
-              return addr.address;
-            }
+          if (!addr.isLoopback &&
+              !addr.isLinkLocal &&
+              addr.type == InternetAddressType.IPv4) {
+            ips.add(addr.address);
           }
         }
       }
-
-      // Fallback: first non-loopback
-      for (final interface in interfaces) {
-        for (final addr in interface.addresses) {
-          if (!addr.isLoopback) return addr.address;
-        }
-      }
     } catch (e) {
-      debugPrint('Error discovering local IP: $e');
+      debugPrint('Error discovering all local IPs: $e');
     }
-    return null;
+    return ips.toList();
   }
 
   /// Generates a random alphanumeric token for transfer authentication

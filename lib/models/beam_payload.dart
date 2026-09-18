@@ -12,6 +12,9 @@ class BeamPayload {
   /// The local IP address where the sender's HTTP file server is running
   final String ip;
 
+  /// Candidate IP addresses across all active interfaces (Wi-Fi LAN, Hotspot, P2P)
+  final List<String> candidateIps;
+
   /// The TCP port on which the sender's HTTP file server is listening
   final int port;
 
@@ -34,6 +37,7 @@ class BeamPayload {
     this.ssid,
     this.password,
     required this.ip,
+    this.candidateIps = const [],
     required this.port,
     required this.fileName,
     required this.fileSize,
@@ -46,9 +50,10 @@ class BeamPayload {
   Map<String, dynamic> toJson() {
     return {
       'v': version,
-      'ssid': ssid,
-      'pwd': password,
+      if (ssid != null) 'ssid': ssid,
+      if (password != null) 'pwd': password,
       'ip': ip,
+      if (candidateIps.isNotEmpty) 'ips': candidateIps,
       'port': port,
       'name': fileName,
       'size': fileSize,
@@ -65,11 +70,26 @@ class BeamPayload {
     if (json['ip'] == null || json['port'] == null || json['name'] == null) {
       throw const FormatException('Invalid BeamQR payload: missing required fields');
     }
+
+    final primaryIp = json['ip'] as String;
+    final ipsList = <String>[];
+    if (json['ips'] is List) {
+      for (final item in json['ips']) {
+        if (item is String && item.isNotEmpty && !ipsList.contains(item)) {
+          ipsList.add(item);
+        }
+      }
+    }
+    if (!ipsList.contains(primaryIp)) {
+      ipsList.insert(0, primaryIp);
+    }
+
     return BeamPayload(
       version: json['v'] as int? ?? 1,
       ssid: json['ssid'] as String?,
       password: json['pwd'] as String?,
-      ip: json['ip'] as String,
+      ip: primaryIp,
+      candidateIps: ipsList,
       port: (json['port'] as num).toInt(),
       fileName: json['name'] as String,
       fileSize: (json['size'] as num?)?.toInt() ?? 0,
