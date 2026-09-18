@@ -167,7 +167,7 @@ class _ReceiverScreenState extends State<ReceiverScreen>
                   ],
                 ),
                 const SizedBox(height: 18),
-                _buildScanPreview(payload),
+                _buildImagePreviewRow(payload),
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
@@ -438,9 +438,9 @@ class _ReceiverScreenState extends State<ReceiverScreen>
     );
   }
 
-  /// Displays an instant image preview if thumbnail is encoded in the QR code,
-  /// or loads a cloud image preview if online beam is active.
-  Widget _buildScanPreview(BeamPayload payload) {
+  /// Builds a compact image preview row: [icon] [image title] [Preview button]
+  /// Tapping 'Preview' or the row opens an AlertDialog with the full image.
+  Widget _buildImagePreviewRow(BeamPayload payload) {
     final fileName = payload.fileName.toLowerCase();
     final isImage =
         fileName.endsWith('.jpg') ||
@@ -450,150 +450,275 @@ class _ReceiverScreenState extends State<ReceiverScreen>
         fileName.endsWith('.gif') ||
         fileName.endsWith('.bmp');
 
-    // 1. Instant QR encoded thumbnail preview (works offline before Wi-Fi connect)
+    Uint8List? imageBytes;
     if (payload.thumbnailBase64 != null &&
         payload.thumbnailBase64!.isNotEmpty) {
       try {
-        final imageBytes = base64Decode(payload.thumbnailBase64!);
-        return Container(
-          height: 170,
-          width: double.infinity,
-          margin: const EdgeInsets.only(bottom: 16),
-          decoration: BoxDecoration(
-            color: const Color(0xFF161B22),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.cyanAccent.withValues(alpha: 0.4)),
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                Image.memory(
-                  imageBytes,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) => const Center(
-                    child: Icon(Icons.broken_image, color: Colors.white38),
-                  ),
-                ),
-                Positioned(
-                  bottom: 8,
-                  left: 8,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.75),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.photo_outlined,
-                          color: Colors.cyanAccent,
-                          size: 13,
-                        ),
-                        SizedBox(width: 4),
-                        Text(
-                          'Instant Image Preview',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
+        imageBytes = base64Decode(payload.thumbnailBase64!);
       } catch (e) {
-        debugPrint('Failed to decode QR thumbnail: $e');
+        debugPrint('Failed to decode thumbnail: $e');
       }
     }
 
-    // 2. Online Cloud image preview
-    if (payload.isOnline && isImage) {
-      return Container(
-        height: 170,
-        width: double.infinity,
-        margin: const EdgeInsets.only(bottom: 16),
-        decoration: BoxDecoration(
-          color: const Color(0xFF161B22),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.purpleAccent.withValues(alpha: 0.4)),
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              Image.network(
-                payload.downloadUrl,
-                fit: BoxFit.cover,
-                loadingBuilder: (ctx, child, progress) {
-                  if (progress == null) return child;
-                  return const Center(
-                    child: SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.purpleAccent,
+    final hasPreview = imageBytes != null || (payload.isOnline && isImage);
+    if (!hasPreview) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Material(
+        color: const Color(0xFF21262D),
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: () => _showFullImageDialog(
+            context,
+            payload,
+            imageBytes: imageBytes,
+            imageUrl: payload.isOnline ? payload.downloadUrl : null,
+          ),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: Colors.cyanAccent.withValues(alpha: 0.35),
+              ),
+            ),
+            child: Row(
+              children: [
+                // [icon]
+                if (imageBytes != null)
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.memory(
+                      imageBytes,
+                      width: 38,
+                      height: 38,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) => Container(
+                        width: 38,
+                        height: 38,
+                        decoration: BoxDecoration(
+                          color: Colors.cyanAccent.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(
+                          Icons.image,
+                          color: Colors.cyanAccent,
+                          size: 20,
+                        ),
                       ),
                     ),
-                  );
-                },
-                errorBuilder: (context, error, stackTrace) => const Center(
-                  child: Icon(Icons.broken_image, color: Colors.white38),
-                ),
-              ),
-              Positioned(
-                bottom: 8,
-                left: 8,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
+                  )
+                else
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: Colors.cyanAccent.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(
+                      Icons.image_rounded,
+                      color: Colors.cyanAccent,
+                      size: 20,
+                    ),
                   ),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.75),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
+                const SizedBox(width: 12),
+                // [image title]
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(
-                        Icons.cloud_done_rounded,
-                        color: Colors.purpleAccent,
-                        size: 13,
-                      ),
-                      SizedBox(width: 4),
                       Text(
-                        'Cloud Image Preview',
-                        style: TextStyle(
+                        payload.fileName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
                           color: Colors.white,
-                          fontSize: 11,
                           fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${payload.formattedSize} • Image',
+                        style: const TextStyle(
+                          color: Colors.white54,
+                          fontSize: 11,
                         ),
                       ),
                     ],
                   ),
                 ),
+                const SizedBox(width: 8),
+                // [Preview button]
+                ElevatedButton.icon(
+                  onPressed: () => _showFullImageDialog(
+                    context,
+                    payload,
+                    imageBytes: imageBytes,
+                    imageUrl: payload.isOnline ? payload.downloadUrl : null,
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.cyanAccent.shade700,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  icon: const Icon(Icons.visibility_rounded, size: 14),
+                  label: const Text(
+                    'Preview',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Displays an AlertDialog with the full image when 'Preview' is tapped
+  void _showFullImageDialog(
+    BuildContext context,
+    BeamPayload payload, {
+    Uint8List? imageBytes,
+    String? imageUrl,
+  }) {
+    showDialog(
+      context: context,
+      builder: (dialogCtx) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF161B22),
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 24,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+            side: BorderSide(color: Colors.cyanAccent.withValues(alpha: 0.3)),
+          ),
+          titlePadding: const EdgeInsets.fromLTRB(16, 14, 8, 10),
+          title: Row(
+            children: [
+              const Icon(
+                Icons.image_rounded,
+                color: Colors.cyanAccent,
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  payload.fileName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.close_rounded, color: Colors.white70),
+                onPressed: () => Navigator.of(dialogCtx).pop(),
+                splashRadius: 20,
               ),
             ],
           ),
-        ),
-      );
-    }
-
-    return const SizedBox.shrink();
+          contentPadding: EdgeInsets.zero,
+          content: Container(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.55,
+              maxWidth: double.infinity,
+            ),
+            color: Colors.black38,
+            child: Center(
+              child: InteractiveViewer(
+                clipBehavior: Clip.antiAlias,
+                minScale: 0.8,
+                maxScale: 4.0,
+                child: imageBytes != null
+                    ? Image.memory(
+                        imageBytes,
+                        fit: BoxFit.contain,
+                        errorBuilder: (context, error, stackTrace) =>
+                            const Center(
+                              child: Icon(
+                                Icons.broken_image,
+                                color: Colors.white38,
+                                size: 48,
+                              ),
+                            ),
+                      )
+                    : (imageUrl != null
+                          ? Image.network(
+                              imageUrl,
+                              fit: BoxFit.contain,
+                              loadingBuilder: (ctx, child, progress) {
+                                if (progress == null) return child;
+                                return const Center(
+                                  child: CircularProgressIndicator(
+                                    color: Colors.cyanAccent,
+                                  ),
+                                );
+                              },
+                              errorBuilder: (context, error, stackTrace) =>
+                                  const Center(
+                                    child: Icon(
+                                      Icons.broken_image,
+                                      color: Colors.white38,
+                                      size: 48,
+                                    ),
+                                  ),
+                            )
+                          : const Center(
+                              child: Icon(
+                                Icons.image_not_supported,
+                                color: Colors.white38,
+                              ),
+                            )),
+              ),
+            ),
+          ),
+          actionsPadding: const EdgeInsets.symmetric(
+            horizontal: 14,
+            vertical: 10,
+          ),
+          actions: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Size: ${payload.formattedSize}',
+                  style: const TextStyle(color: Colors.white60, fontSize: 12),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.of(dialogCtx).pop(),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.cyanAccent.shade700,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  child: const Text('Close'),
+                ),
+              ],
+            ),
+          ],
+        );
+      },
+    );
   }
 
   Widget _buildMetaRow(IconData icon, String label, String value) {
