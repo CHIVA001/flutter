@@ -2300,8 +2300,6 @@ class _MultiSelectGallerySheetState extends State<_MultiSelectGallerySheet> {
   // Ordered list of selected assets (preserves selection order)
   final List<AssetEntity> _selected = [];
 
-  bool _isSelected(AssetEntity asset) => _selected.any((a) => a.id == asset.id);
-
   int _selectionIndex(AssetEntity asset) {
     final idx = _selected.indexWhere((a) => a.id == asset.id);
     return idx == -1 ? -1 : idx + 1; // 1-based
