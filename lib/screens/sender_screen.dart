@@ -142,7 +142,7 @@ class _SenderScreenState extends State<SenderScreen> {
                 ),
                 const SizedBox(height: 12),
                 _buildSourceOptionTile(
-                  title: 'Browse Files & Documents',
+                  title: 'Browse Files \u0026 Documents',
                   subtitle: 'Pick any file or document from device storage',
                   icon: Icons.folder_open_rounded,
                   colors: [const Color(0xFF0284C7), const Color(0xFF0D9488)],
@@ -151,6 +151,19 @@ class _SenderScreenState extends State<SenderScreen> {
                     _pickFromFileSystem();
                   },
                 ),
+                if (Platform.isIOS) ...[
+                  const SizedBox(height: 12),
+                  _buildSourceOptionTile(
+                    title: 'Live Photo (motion video)',
+                    subtitle: 'Beam the .mov motion clip from a Live Photo',
+                    icon: Icons.motion_photos_on_rounded,
+                    colors: [const Color(0xFF059669), const Color(0xFF10B981)],
+                    onTap: () {
+                      Navigator.of(ctx).pop();
+                      _pickLivePhotoAsVideo();
+                    },
+                  ),
+                ],
               ],
             ),
           ),
@@ -242,6 +255,42 @@ class _SenderScreenState extends State<SenderScreen> {
       _onFileSelected(file, name, size);
     } catch (e) {
       _showSnackBar('Error selecting media: $e');
+    }
+  }
+
+  /// iOS only: picks a Live Photo from the gallery and exports its motion .mov clip.
+  /// Uses pickVideo(source: gallery) which causes iOS to present the native
+  /// photo picker — when the user picks a Live Photo, the .mov motion is exported.
+  Future<void> _pickLivePhotoAsVideo() async {
+    try {
+      final hasPermission = await _p2pService.requestSenderPermissions();
+      if (!hasPermission) {
+        _showSnackBar('Photos permission required.');
+        return;
+      }
+
+      final XFile? pickedFile = await _picker.pickVideo(
+        source: ImageSource.gallery,
+      );
+
+      if (pickedFile == null) return;
+
+      final file = File(pickedFile.path);
+      final size = await file.length();
+      // Rename to .mov so receiver knows it is a video
+      final rawName = pickedFile.name.isNotEmpty
+          ? pickedFile.name
+          : p.basename(file.path);
+      final name =
+          rawName.toLowerCase().endsWith('.mov') ||
+              rawName.toLowerCase().endsWith('.mp4')
+          ? rawName
+          : '${p.basenameWithoutExtension(rawName)}.mov';
+
+      _onFileSelected(file, name, size);
+      _showSnackBar('Live Photo motion clip selected \u2705');
+    } catch (e) {
+      _showSnackBar('Error picking Live Photo: $e');
     }
   }
 
