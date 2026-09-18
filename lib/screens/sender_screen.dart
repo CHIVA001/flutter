@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path/path.dart' as p;
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../models/beam_payload.dart';
@@ -51,19 +53,181 @@ class _SenderScreenState extends State<SenderScreen> {
     super.dispose();
   }
 
-  /// Picks a video from the gallery and reads its metadata
-  Future<void> _pickVideo() async {
+  /// Sets the selected file and reads its metadata
+  void _onFileSelected(File file, String name, int size) {
+    setState(() {
+      _selectedVideo = file;
+      _videoSize = size;
+      _videoName = name;
+      _payload = null;
+      _progress = TransferProgress.idle();
+      _statusMessage = null;
+    });
+  }
+
+  /// Shows the bottom sheet with source options: Photo/Video Gallery, Camera, and Files
+  void _showSourceBottomSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF161B22),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 42,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.white24,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                const Text(
+                  'Select File to Beam',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Choose source from your device storage or camera',
+                  style: TextStyle(color: Colors.white54, fontSize: 13),
+                ),
+                const SizedBox(height: 20),
+                _buildSourceOptionTile(
+                  title: 'Photos & Videos',
+                  subtitle: 'Pick from your gallery or camera roll',
+                  icon: Icons.photo_library_rounded,
+                  colors: [const Color(0xFF4F46E5), const Color(0xFF7C3AED)],
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    _pickFromGallery();
+                  },
+                ),
+                const SizedBox(height: 12),
+                _buildSourceOptionTile(
+                  title: 'Record Video with Camera',
+                  subtitle: 'Capture a new high-definition video',
+                  icon: Icons.videocam_rounded,
+                  colors: [const Color(0xFFE11D48), const Color(0xFFF43F5E)],
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    _pickFromCamera(isVideo: true);
+                  },
+                ),
+                const SizedBox(height: 12),
+                _buildSourceOptionTile(
+                  title: 'Take Photo with Camera',
+                  subtitle: 'Snap a picture directly',
+                  icon: Icons.camera_alt_rounded,
+                  colors: [const Color(0xFFD97706), const Color(0xFFF59E0B)],
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    _pickFromCamera(isVideo: false);
+                  },
+                ),
+                const SizedBox(height: 12),
+                _buildSourceOptionTile(
+                  title: 'Browse Files & Documents',
+                  subtitle: 'Pick any file or document from device storage',
+                  icon: Icons.folder_open_rounded,
+                  colors: [const Color(0xFF0284C7), const Color(0xFF0D9488)],
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    _pickFromFileSystem();
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildSourceOptionTile({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required List<Color> colors,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: const Color(0xFF21262D),
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(colors: colors),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, color: Colors.white, size: 22),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        color: Colors.white54,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(
+                Icons.arrow_forward_ios_rounded,
+                color: Colors.white30,
+                size: 14,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Picks media (photo/video) from the gallery
+  Future<void> _pickFromGallery() async {
     try {
       final hasPermission = await _p2pService.requestSenderPermissions();
       if (!hasPermission) {
-        _showSnackBar('Permissions are required to beam videos.');
+        _showSnackBar('Storage/photos permission required.');
         return;
       }
 
-      final XFile? pickedFile = await _picker.pickVideo(
-        source: ImageSource.gallery,
-        maxDuration: const Duration(hours: 3),
-      );
+      final XFile? pickedFile = await _picker.pickMedia();
 
       if (pickedFile == null) return;
 
@@ -71,18 +235,70 @@ class _SenderScreenState extends State<SenderScreen> {
       final size = await file.length();
       final name = pickedFile.name.isNotEmpty
           ? pickedFile.name
-          : file.path.split(Platform.pathSeparator).last;
+          : p.basename(file.path);
 
-      setState(() {
-        _selectedVideo = file;
-        _videoSize = size;
-        _videoName = name;
-        _payload = null;
-        _progress = TransferProgress.idle();
-        _statusMessage = null;
-      });
+      _onFileSelected(file, name, size);
     } catch (e) {
-      _showSnackBar('Error selecting video: $e');
+      _showSnackBar('Error selecting media: $e');
+    }
+  }
+
+  /// Captures video or photo from camera
+  Future<void> _pickFromCamera({required bool isVideo}) async {
+    try {
+      final hasPermission = await _p2pService.requestSenderPermissions();
+      if (!hasPermission) {
+        _showSnackBar('Camera permission is required.');
+        return;
+      }
+
+      final XFile? pickedFile = isVideo
+          ? await _picker.pickVideo(
+              source: ImageSource.camera,
+              maxDuration: const Duration(hours: 1),
+            )
+          : await _picker.pickImage(source: ImageSource.camera);
+
+      if (pickedFile == null) return;
+
+      final file = File(pickedFile.path);
+      final size = await file.length();
+      final name = pickedFile.name.isNotEmpty
+          ? pickedFile.name
+          : p.basename(file.path);
+
+      _onFileSelected(file, name, size);
+    } catch (e) {
+      _showSnackBar('Error capturing from camera: $e');
+    }
+  }
+
+  /// Picks any file/document from filesystem storage
+  Future<void> _pickFromFileSystem() async {
+    try {
+      final hasPermission = await _p2pService.requestSenderPermissions();
+      if (!hasPermission) {
+        _showSnackBar('Storage permission is required to browse files.');
+        return;
+      }
+
+      final List<PlatformFile> files = await FilePicker.pickFiles(
+        type: FileType.any,
+      );
+
+      if (files.isEmpty) return;
+
+      final selected = files.first;
+      final path = selected.path;
+      if (path == null) return;
+
+      final file = File(path);
+      final size = await file.length();
+      final name = selected.name;
+
+      _onFileSelected(file, name, size);
+    } catch (e) {
+      _showSnackBar('Error picking file: $e');
     }
   }
 
@@ -174,6 +390,39 @@ class _SenderScreenState extends State<SenderScreen> {
     );
   }
 
+  IconData _getFileIcon(String? name) {
+    if (name == null) return Icons.insert_drive_file_rounded;
+    final ext = p.extension(name).toLowerCase();
+    if (['.mp4', '.mov', '.mkv', '.avi', '.webm'].contains(ext)) {
+      return Icons.play_circle_fill;
+    }
+    if (['.jpg', '.jpeg', '.png', '.gif', '.webp', '.heic'].contains(ext)) {
+      return Icons.image_rounded;
+    }
+    if (['.pdf', '.doc', '.docx', '.txt', '.xlsx'].contains(ext)) {
+      return Icons.description_rounded;
+    }
+    if (['.zip', '.rar', '.7z', '.tar'].contains(ext)) {
+      return Icons.folder_zip_rounded;
+    }
+    return Icons.insert_drive_file_rounded;
+  }
+
+  Color _getFileColor(String? name) {
+    if (name == null) return Colors.cyanAccent;
+    final ext = p.extension(name).toLowerCase();
+    if (['.mp4', '.mov', '.mkv', '.avi', '.webm'].contains(ext)) {
+      return Colors.indigoAccent;
+    }
+    if (['.jpg', '.jpeg', '.png', '.gif', '.webp', '.heic'].contains(ext)) {
+      return Colors.pinkAccent;
+    }
+    if (['.pdf', '.doc', '.docx', '.txt'].contains(ext)) {
+      return Colors.amberAccent;
+    }
+    return Colors.cyanAccent;
+  }
+
   Widget _buildVideoSelectionCard() {
     return Container(
       padding: const EdgeInsets.all(20),
@@ -194,7 +443,7 @@ class _SenderScreenState extends State<SenderScreen> {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Icon(
-                  Icons.video_library_rounded,
+                  Icons.auto_awesome_motion_rounded,
                   color: Colors.indigoAccent,
                   size: 24,
                 ),
@@ -205,7 +454,7 @@ class _SenderScreenState extends State<SenderScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Video File',
+                      'Source File to Beam',
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: 16,
@@ -213,7 +462,7 @@ class _SenderScreenState extends State<SenderScreen> {
                       ),
                     ),
                     Text(
-                      'Select an offline video to transmit',
+                      'Pick from files, photos, videos, or capture live',
                       style: TextStyle(color: Colors.white54, fontSize: 12),
                     ),
                   ],
@@ -224,23 +473,24 @@ class _SenderScreenState extends State<SenderScreen> {
           const SizedBox(height: 16),
           if (_selectedVideo == null) ...[
             OutlinedButton.icon(
-              onPressed: _pickVideo,
+              onPressed: _showSourceBottomSheet,
               style: OutlinedButton.styleFrom(
-                minimumSize: const Size(double.infinity, 50),
+                minimumSize: const Size(double.infinity, 52),
                 side: const BorderSide(color: Colors.indigoAccent),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14),
                 ),
               ),
               icon: const Icon(
-                Icons.add_photo_alternate_rounded,
+                Icons.add_circle_outline_rounded,
                 color: Colors.indigoAccent,
               ),
               label: const Text(
-                'Choose Video from Gallery',
+                'Choose File, Photo, or Video',
                 style: TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.w600,
+                  fontSize: 15,
                 ),
               ),
             ),
@@ -253,9 +503,9 @@ class _SenderScreenState extends State<SenderScreen> {
               ),
               child: Row(
                 children: [
-                  const Icon(
-                    Icons.play_circle_fill,
-                    color: Colors.indigoAccent,
+                  Icon(
+                    _getFileIcon(_videoName),
+                    color: _getFileColor(_videoName),
                     size: 36,
                   ),
                   const SizedBox(width: 14),
@@ -264,7 +514,7 @@ class _SenderScreenState extends State<SenderScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          _videoName ?? 'video.mp4',
+                          _videoName ?? 'selected_file',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
@@ -276,8 +526,8 @@ class _SenderScreenState extends State<SenderScreen> {
                         const SizedBox(height: 4),
                         Text(
                           _formatBytes(_videoSize ?? 0),
-                          style: const TextStyle(
-                            color: Colors.indigoAccent,
+                          style: TextStyle(
+                            color: _getFileColor(_videoName),
                             fontSize: 13,
                             fontWeight: FontWeight.w500,
                           ),
@@ -288,12 +538,12 @@ class _SenderScreenState extends State<SenderScreen> {
                   if (_payload == null)
                     IconButton(
                       icon: const Icon(
-                        Icons.edit,
+                        Icons.swap_horiz_rounded,
                         color: Colors.white70,
-                        size: 20,
+                        size: 24,
                       ),
-                      onPressed: _pickVideo,
-                      tooltip: 'Change Video',
+                      onPressed: _showSourceBottomSheet,
+                      tooltip: 'Change Source',
                     ),
                 ],
               ),

@@ -102,7 +102,8 @@ class P2pService {
     final cameraStatus = statuses[Permission.camera];
     if (cameraStatus != null && !cameraStatus.isGranted) {
       throw const SocketException(
-          'Camera permission is required to scan the BeamQR code.');
+        'Camera permission is required to scan the BeamQR code.',
+      );
     }
     return true;
   }
@@ -115,7 +116,10 @@ class P2pService {
   /// HTTP file server, and generates a [BeamPayload] for QR code rendering.
   Future<BeamPayload> startHosting(File videoFile, {int port = 8888}) async {
     if (!await videoFile.exists()) {
-      throw FileSystemException('Selected video file does not exist', videoFile.path);
+      throw FileSystemException(
+        'Selected video file does not exist',
+        videoFile.path,
+      );
     }
 
     _senderProgressController.add(TransferProgress.initializing());
@@ -178,6 +182,7 @@ class P2pService {
     final boundPort = _httpServer!.port;
     final fileSize = await videoFile.length();
     final fileName = p.basename(videoFile.path);
+    final mimeType = _detectMimeType(videoFile.path);
 
     _listenToIncomingHttpRequests();
 
@@ -190,7 +195,7 @@ class P2pService {
       port: boundPort,
       fileName: fileName,
       fileSize: fileSize,
-      mimeType: 'video/mp4',
+      mimeType: mimeType,
       token: _currentSessionToken!,
     );
   }
@@ -208,7 +213,9 @@ class P2pService {
         if (token == null || token != _currentSessionToken) {
           request.response
             ..statusCode = HttpStatus.unauthorized
-            ..write(jsonEncode({'error': 'Unauthorized: invalid or missing token'}))
+            ..write(
+              jsonEncode({'error': 'Unauthorized: invalid or missing token'}),
+            )
             ..close();
           return;
         }
@@ -249,8 +256,9 @@ class P2pService {
       },
       onError: (Object error) {
         debugPrint('HttpServer error: $error');
-        _senderProgressController
-            .add(TransferProgress.failed('Server error: $error'));
+        _senderProgressController.add(
+          TransferProgress.failed('Server error: $error'),
+        );
       },
     );
   }
@@ -267,14 +275,20 @@ class P2pService {
 
     final totalBytes = await file.length();
     final response = request.response;
+    final mime = _detectMimeType(file.path);
+    final mimeParts = mime.split('/');
 
     response.headers
-      ..contentType = ContentType('video', 'mp4')
+      ..contentType = mimeParts.length == 2
+          ? ContentType(mimeParts[0], mimeParts[1])
+          : ContentType('application', 'octet-stream')
       ..set(HttpHeaders.contentLengthHeader, totalBytes.toString())
       ..set(HttpHeaders.acceptRangesHeader, 'bytes')
       ..set(HttpHeaders.connectionHeader, 'keep-alive')
-      ..set('Content-Disposition',
-          'attachment; filename="${p.basename(file.path)}"');
+      ..set(
+        'Content-Disposition',
+        'attachment; filename="${p.basename(file.path)}"',
+      );
 
     int transferredBytes = 0;
     final stopwatch = Stopwatch()..start();
@@ -306,12 +320,14 @@ class P2pService {
             eta = Duration(seconds: remainingSeconds);
           }
 
-          _senderProgressController.add(TransferProgress.transferring(
-            transferredBytes: transferredBytes,
-            totalBytes: totalBytes,
-            speedMBps: speedMBps,
-            eta: eta,
-          ));
+          _senderProgressController.add(
+            TransferProgress.transferring(
+              transferredBytes: transferredBytes,
+              totalBytes: totalBytes,
+              speedMBps: speedMBps,
+              eta: eta,
+            ),
+          );
 
           lastLoggedBytes = transferredBytes;
           lastLoggedTime = now;
@@ -322,13 +338,14 @@ class P2pService {
       await response.close();
 
       stopwatch.stop();
-      _senderProgressController.add(TransferProgress.completed(
-        totalBytes: totalBytes,
-      ));
+      _senderProgressController.add(
+        TransferProgress.completed(totalBytes: totalBytes),
+      );
     } on SocketException catch (e) {
       debugPrint('Sender socket disconnected: $e');
-      _senderProgressController
-          .add(TransferProgress.failed('Receiver disconnected prematurely'));
+      _senderProgressController.add(
+        TransferProgress.failed('Receiver disconnected prematurely'),
+      );
     } catch (e) {
       debugPrint('Error during video streaming: $e');
       _senderProgressController.add(TransferProgress.failed(e.toString()));
@@ -407,24 +424,28 @@ class P2pService {
     _activeFileSink = targetFile.openWrite(mode: FileMode.writeOnly);
 
     // 3. Connect to sender's HTTP stream
-    _activeHttpClient = HttpClient()
-      ..connectionTimeout = connectionTimeout;
+    _activeHttpClient = HttpClient()..connectionTimeout = connectionTimeout;
 
     try {
       _receiverProgressController.add(TransferProgress.waitingForPeer());
 
       final request = await _activeHttpClient!
           .getUrl(Uri.parse(payload.downloadUrl))
-          .timeout(connectionTimeout, onTimeout: () {
-        throw TimeoutException(
-            'Failed to connect to sender at ${payload.ip}:${payload.port}. Please ensure you are connected to the same Wi-Fi or Hotspot.');
-      });
+          .timeout(
+            connectionTimeout,
+            onTimeout: () {
+              throw TimeoutException(
+                'Failed to connect to sender at ${payload.ip}:${payload.port}. Please ensure you are connected to the same Wi-Fi or Hotspot.',
+              );
+            },
+          );
 
       final response = await request.close();
 
       if (response.statusCode != HttpStatus.ok) {
         throw HttpException(
-            'Download failed with HTTP ${response.statusCode}: ${response.reasonPhrase}');
+          'Download failed with HTTP ${response.statusCode}: ${response.reasonPhrase}',
+        );
       }
 
       final totalBytes = response.contentLength > 0
@@ -456,12 +477,14 @@ class P2pService {
             eta = Duration(seconds: remainingSeconds);
           }
 
-          _receiverProgressController.add(TransferProgress.transferring(
-            transferredBytes: transferredBytes,
-            totalBytes: totalBytes,
-            speedMBps: speedMBps,
-            eta: eta,
-          ));
+          _receiverProgressController.add(
+            TransferProgress.transferring(
+              transferredBytes: transferredBytes,
+              totalBytes: totalBytes,
+              speedMBps: speedMBps,
+              eta: eta,
+            ),
+          );
 
           lastLoggedBytes = transferredBytes;
           lastLoggedTime = now;
@@ -472,17 +495,22 @@ class P2pService {
       await _activeFileSink!.close();
       _activeFileSink = null;
 
-      _receiverProgressController.add(TransferProgress.completed(
-        totalBytes: transferredBytes,
-        savedFilePath: targetFile.path,
-      ));
+      _receiverProgressController.add(
+        TransferProgress.completed(
+          totalBytes: transferredBytes,
+          savedFilePath: targetFile.path,
+        ),
+      );
 
       return targetFile;
     } on SocketException catch (e) {
       debugPrint('Receiver SocketException: $e');
       await _cleanupFailedDownload(targetFile);
-      _receiverProgressController.add(TransferProgress.failed(
-          'Connection failed. Ensure both devices are on the same Wi-Fi/Hotspot network.'));
+      _receiverProgressController.add(
+        TransferProgress.failed(
+          'Connection failed. Ensure both devices are on the same Wi-Fi/Hotspot network.',
+        ),
+      );
       rethrow;
     } catch (e) {
       debugPrint('Receiver error: $e');
@@ -569,14 +597,52 @@ class P2pService {
     const chars =
         'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     final rand = Random.secure();
-    return List.generate(length, (index) => chars[rand.nextInt(chars.length)])
-        .join();
+    return List.generate(
+      length,
+      (index) => chars[rand.nextInt(chars.length)],
+    ).join();
+  }
+
+  /// Detects MIME type from file extension
+  static String _detectMimeType(String path) {
+    final ext = p.extension(path).toLowerCase();
+    switch (ext) {
+      case '.mp4':
+        return 'video/mp4';
+      case '.mov':
+        return 'video/quicktime';
+      case '.mkv':
+        return 'video/x-matroska';
+      case '.avi':
+        return 'video/x-msvideo';
+      case '.webm':
+        return 'video/webm';
+      case '.jpg':
+      case '.jpeg':
+        return 'image/jpeg';
+      case '.png':
+        return 'image/png';
+      case '.gif':
+        return 'image/gif';
+      case '.webp':
+        return 'image/webp';
+      case '.pdf':
+        return 'application/pdf';
+      case '.zip':
+        return 'application/zip';
+      case '.mp3':
+        return 'audio/mpeg';
+      case '.wav':
+        return 'audio/wav';
+      default:
+        return 'application/octet-stream';
+    }
   }
 
   /// Sanitizes file names to prevent directory traversal or invalid characters
   String _sanitizeFileName(String name) {
     var cleaned = p.basename(name).replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
-    if (!cleaned.toLowerCase().endsWith('.mp4')) {
+    if (!cleaned.contains('.')) {
       cleaned = '$cleaned.mp4';
     }
     return cleaned;
