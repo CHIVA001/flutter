@@ -442,7 +442,8 @@ class _ReceiverScreenState extends State<ReceiverScreen>
   /// or loads a cloud image preview if online beam is active.
   Widget _buildScanPreview(BeamPayload payload) {
     final fileName = payload.fileName.toLowerCase();
-    final isImage = fileName.endsWith('.jpg') ||
+    final isImage =
+        fileName.endsWith('.jpg') ||
         fileName.endsWith('.jpeg') ||
         fileName.endsWith('.png') ||
         fileName.endsWith('.webp') ||
@@ -450,7 +451,8 @@ class _ReceiverScreenState extends State<ReceiverScreen>
         fileName.endsWith('.bmp');
 
     // 1. Instant QR encoded thumbnail preview (works offline before Wi-Fi connect)
-    if (payload.thumbnailBase64 != null && payload.thumbnailBase64!.isNotEmpty) {
+    if (payload.thumbnailBase64 != null &&
+        payload.thumbnailBase64!.isNotEmpty) {
       try {
         final imageBytes = base64Decode(payload.thumbnailBase64!);
         return Container(
@@ -478,7 +480,10 @@ class _ReceiverScreenState extends State<ReceiverScreen>
                   bottom: 8,
                   left: 8,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.black.withValues(alpha: 0.75),
                       borderRadius: BorderRadius.circular(8),
@@ -486,7 +491,11 @@ class _ReceiverScreenState extends State<ReceiverScreen>
                     child: const Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.photo_outlined, color: Colors.cyanAccent, size: 13),
+                        Icon(
+                          Icons.photo_outlined,
+                          color: Colors.cyanAccent,
+                          size: 13,
+                        ),
                         SizedBox(width: 4),
                         Text(
                           'Instant Image Preview',
@@ -549,7 +558,10 @@ class _ReceiverScreenState extends State<ReceiverScreen>
                 bottom: 8,
                 left: 8,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.black.withValues(alpha: 0.75),
                     borderRadius: BorderRadius.circular(8),
@@ -557,7 +569,11 @@ class _ReceiverScreenState extends State<ReceiverScreen>
                   child: const Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.cloud_done_rounded, color: Colors.purpleAccent, size: 13),
+                      Icon(
+                        Icons.cloud_done_rounded,
+                        color: Colors.purpleAccent,
+                        size: 13,
+                      ),
                       SizedBox(width: 4),
                       Text(
                         'Cloud Image Preview',
