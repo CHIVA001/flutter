@@ -293,8 +293,7 @@ class _SenderScreenState extends State<SenderScreen> {
         for (final album in albums) {
           final count = await album.assetCountAsync;
           if (count == 0) continue;
-          final assets =
-              await album.getAssetListRange(start: 0, end: count);
+          final assets = await album.getAssetListRange(start: 0, end: count);
           for (final asset in assets) {
             if (asset.isLivePhoto) {
               allLivePhotos[asset.id] = asset;
@@ -315,11 +314,13 @@ class _SenderScreenState extends State<SenderScreen> {
       final videoAssets = allLivePhotos.values
           .where((a) => a.type == AssetType.video)
           .toList();
-      final displayAssets =
-          videoAssets.isNotEmpty ? videoAssets : allLivePhotos.values.toList();
+      final displayAssets = videoAssets.isNotEmpty
+          ? videoAssets
+          : allLivePhotos.values.toList();
 
-      final AssetEntity? selected =
-          await _showLivePhotoGridSheet(displayAssets);
+      final AssetEntity? selected = await _showLivePhotoGridSheet(
+        displayAssets,
+      );
       if (selected == null || !mounted) return;
 
       final File? file = await selected.file;
@@ -334,9 +335,9 @@ class _SenderScreenState extends State<SenderScreen> {
           : p.basename(file.path);
       final String name =
           rawName.toLowerCase().endsWith('.mov') ||
-                  rawName.toLowerCase().endsWith('.mp4')
-              ? rawName
-              : '${p.basenameWithoutExtension(rawName)}.mov';
+              rawName.toLowerCase().endsWith('.mp4')
+          ? rawName
+          : '${p.basenameWithoutExtension(rawName)}.mov';
 
       _onFileSelected(file, name, size);
       if (!mounted) return;
@@ -357,7 +358,11 @@ class _SenderScreenState extends State<SenderScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Row(
           children: [
-            Icon(Icons.lock_outline_rounded, color: Colors.orangeAccent, size: 20),
+            Icon(
+              Icons.lock_outline_rounded,
+              color: Colors.orangeAccent,
+              size: 20,
+            ),
             SizedBox(width: 8),
             Text(
               'Limited Photo Access',
@@ -463,10 +468,7 @@ class _SenderScreenState extends State<SenderScreen> {
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text(
-              'OK',
-              style: TextStyle(color: Colors.white54),
-            ),
+            child: const Text('OK', style: TextStyle(color: Colors.white54)),
           ),
         ],
       ),
@@ -591,102 +593,104 @@ class _SenderScreenState extends State<SenderScreen> {
                 itemCount: assets.length,
                 itemBuilder: (ctx, index) {
                   final asset = assets[index];
-                  return GestureDetector(
-                    onTap: () => Navigator.of(ctx).pop(asset),
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        // Photo thumbnail
-                        FutureBuilder<Uint8List?>(
-                          future: asset.thumbnailDataWithSize(
-                            const ThumbnailSize(200, 200),
-                          ),
-                          builder: (ctx, snap) {
-                            if (snap.hasData && snap.data != null) {
-                              return ClipRRect(
-                                borderRadius: BorderRadius.circular(4),
-                                child: Image.memory(
-                                  snap.data!,
-                                  fit: BoxFit.cover,
-                                ),
-                              );
-                            }
-                            return Container(
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF21262D),
-                                borderRadius: BorderRadius.circular(4),
+                  return ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        // InkWell wins in the gesture arena over the sheet
+                        // drag, so taps always fire reliably.
+                        onTap: () => Navigator.of(ctx).pop(asset),
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            // Photo thumbnail
+                            FutureBuilder<Uint8List?>(
+                              future: asset.thumbnailDataWithSize(
+                                const ThumbnailSize(200, 200),
                               ),
-                              child: const Center(
-                                child: SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.white30,
+                              builder: (ctx, snap) {
+                                if (snap.hasData && snap.data != null) {
+                                  return Image.memory(
+                                    snap.data!,
+                                    fit: BoxFit.cover,
+                                  );
+                                }
+                                return Container(
+                                  color: const Color(0xFF21262D),
+                                  child: const Center(
+                                    child: SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white30,
+                                      ),
+                                    ),
                                   ),
+                                );
+                              },
+                            ),
+                            // LIVE badge (top-left)
+                            Positioned(
+                              top: 4,
+                              left: 4,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 5,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.65),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.motion_photos_on_rounded,
+                                      color: Colors.white,
+                                      size: 9,
+                                    ),
+                                    SizedBox(width: 2),
+                                    Text(
+                                      'LIVE',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.bold,
+                                        letterSpacing: 0.5,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                            );
-                          },
-                        ),
-                        // LIVE badge (top-left)
-                        Positioned(
-                          top: 4,
-                          left: 4,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 5,
-                              vertical: 2,
                             ),
-                            decoration: BoxDecoration(
-                              color: Colors.black.withValues(alpha: 0.65),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: const Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.motion_photos_on_rounded,
-                                  color: Colors.white,
-                                  size: 9,
+                            // Duration badge (bottom-right)
+                            Positioned(
+                              bottom: 4,
+                              right: 4,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 4,
+                                  vertical: 2,
                                 ),
-                                SizedBox(width: 2),
-                                Text(
-                                  'LIVE',
-                                  style: TextStyle(
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.6),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  '${asset.duration}s',
+                                  style: const TextStyle(
                                     color: Colors.white,
                                     fontSize: 9,
-                                    fontWeight: FontWeight.bold,
-                                    letterSpacing: 0.5,
                                   ),
                                 ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        // Duration badge (bottom-right)
-                        Positioned(
-                          bottom: 4,
-                          right: 4,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 4,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.black.withValues(alpha: 0.6),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              '${asset.duration}s',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 9,
                               ),
                             ),
-                          ),
+                          ],
                         ),
-                      ],
+                      ),
                     ),
                   );
                 },
