@@ -825,6 +825,40 @@ class _SenderScreenState extends State<SenderScreen> {
                       ),
                     ),
                   ),
+                  const SizedBox(width: 6),
+                  InkWell(
+                    onTap: _showEditHostIpDialog,
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.indigoAccent.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.edit,
+                            color: Colors.indigoAccent,
+                            size: 12,
+                          ),
+                          SizedBox(width: 4),
+                          Text(
+                            'Edit',
+                            style: TextStyle(
+                              color: Colors.indigoAccent,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ],
               ),
               if (_payload!.candidateIps.length > 1) ...[
@@ -841,7 +875,153 @@ class _SenderScreenState extends State<SenderScreen> {
             ],
           ),
         ),
+        if (_payload!.ip.startsWith('10.0.2.') ||
+            _payload!.candidateIps.any((ip) => ip.startsWith('10.0.2.'))) ...[
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.amber.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.info_outline, color: Colors.amber, size: 16),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Android Emulator detected:',
+                        style: TextStyle(
+                          color: Colors.amber,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      const Text(
+                        'Real phones cannot reach 10.0.2.x directly.\nRun: adb forward tcp:8888 tcp:8888\nThen tap Edit above to set your PC Wi-Fi IP.',
+                        style: TextStyle(color: Colors.white70, fontSize: 11),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ],
+    );
+  }
+
+  void _showEditHostIpDialog() {
+    if (_payload == null) return;
+    final controller = TextEditingController(text: _payload!.ip);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF161B22),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: const Row(
+          children: [
+            Icon(Icons.edit_location_alt_rounded, color: Colors.indigoAccent),
+            SizedBox(width: 8),
+            Text(
+              'Set Host IP',
+              style: TextStyle(color: Colors.white, fontSize: 18),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'If testing on emulator or custom network, enter the IP reachable by receiver (e.g. your PC\'s Wi-Fi IP):',
+              style: TextStyle(color: Colors.white70, fontSize: 12),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              style: const TextStyle(
+                color: Colors.white,
+                fontFamily: 'monospace',
+              ),
+              decoration: InputDecoration(
+                hintText: 'e.g. 192.168.100.192',
+                hintStyle: const TextStyle(color: Colors.white30),
+                filled: true,
+                fillColor: const Color(0xFF21262D),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+              ),
+            ),
+            if (_payload!.candidateIps.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              const Text(
+                'Detected IPs:',
+                style: TextStyle(color: Colors.white54, fontSize: 11),
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: _payload!.candidateIps.map((ip) {
+                  return ActionChip(
+                    label: Text(
+                      ip,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Colors.indigoAccent,
+                      ),
+                    ),
+                    backgroundColor: const Color(0xFF21262D),
+                    side: BorderSide(
+                      color: Colors.indigoAccent.withValues(alpha: 0.3),
+                    ),
+                    onPressed: () => controller.text = ip,
+                  );
+                }).toList(),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: Colors.white54),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final newIp = controller.text.trim();
+              if (newIp.isNotEmpty) {
+                setState(() {
+                  _payload = _p2pService.updatePayloadHostIp(_payload!, newIp);
+                });
+              }
+              Navigator.of(ctx).pop();
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.indigoAccent,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Update'),
+          ),
+        ],
+      ),
     );
   }
 

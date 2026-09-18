@@ -118,6 +118,7 @@ class P2pService {
     File videoFile, {
     int port = 8888,
     bool enableWifiDirect = true,
+    String? overrideHostIp,
   }) async {
     if (!await videoFile.exists()) {
       throw FileSystemException(
@@ -177,25 +178,30 @@ class P2pService {
         .toList();
 
     // Determine primary IP:
-    // If the device is connected to a local Wi-Fi router or hotspot (192.168.1.x, 10.x, 172.x, 192.168.43.x),
-    // prioritize that over the Wi-Fi Direct group IP (192.168.49.1) so peers on the same Wi-Fi connect directly.
+    // If overrideHostIp is given, use it. Otherwise, prioritize standard routable Wi-Fi
+    // LAN subnets, excluding Android Wi-Fi Direct (192.168.49.x) and emulator-internal NAT (10.0.2.x).
     String primaryIp;
-    final lanIp = validIps.cast<String?>().firstWhere(
-      (ip) =>
-          ip != null &&
-          !ip.startsWith('192.168.49.') &&
-          (ip.startsWith('192.168.') ||
-              ip.startsWith('10.') ||
-              ip.startsWith('172.')),
-      orElse: () => null,
-    );
-
-    if (lanIp != null) {
-      primaryIp = lanIp;
-    } else if (validIps.isNotEmpty) {
-      primaryIp = validIps.first;
+    if (overrideHostIp != null && overrideHostIp.isNotEmpty) {
+      primaryIp = overrideHostIp;
     } else {
-      primaryIp = '192.168.49.1';
+      final lanIp = validIps.cast<String?>().firstWhere(
+        (ip) =>
+            ip != null &&
+            !ip.startsWith('192.168.49.') &&
+            !ip.startsWith('10.0.2.') &&
+            (ip.startsWith('192.168.') ||
+                ip.startsWith('10.') ||
+                ip.startsWith('172.')),
+        orElse: () => null,
+      );
+
+      if (lanIp != null) {
+        primaryIp = lanIp;
+      } else if (validIps.isNotEmpty) {
+        primaryIp = validIps.first;
+      } else {
+        primaryIp = '192.168.49.1';
+      }
     }
 
     if (!validIps.contains(primaryIp)) {
@@ -241,6 +247,28 @@ class P2pService {
       fileSize: fileSize,
       mimeType: mimeType,
       token: _currentSessionToken!,
+    );
+  }
+
+  /// Updates an existing payload with a custom host IP (e.g. for emulator testing with PC LAN IP)
+  BeamPayload updatePayloadHostIp(BeamPayload payload, String newIp) {
+    final updatedCandidates = <String>[newIp];
+    for (final ip in payload.candidateIps) {
+      if (ip != newIp && !updatedCandidates.contains(ip)) {
+        updatedCandidates.add(ip);
+      }
+    }
+    return BeamPayload(
+      ssid: payload.ssid,
+      password: payload.password,
+      ip: newIp,
+      candidateIps: updatedCandidates,
+      port: payload.port,
+      fileName: payload.fileName,
+      fileSize: payload.fileSize,
+      mimeType: payload.mimeType,
+      token: payload.token,
+      version: payload.version,
     );
   }
 

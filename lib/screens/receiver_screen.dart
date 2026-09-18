@@ -247,10 +247,52 @@ class _ReceiverScreenState extends State<ReceiverScreen>
                         ),
                       ],
                       const Divider(color: Colors.white12, height: 16),
-                      _buildMetaRow(
-                        Icons.lan_outlined,
-                        'Stream IP',
-                        '${payload.ip}:${payload.port}',
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildMetaRow(
+                              Icons.lan_outlined,
+                              'Stream IP',
+                              '${payload.ip}:${payload.port}',
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          InkWell(
+                            onTap: () {
+                              Navigator.of(ctx).pop();
+                              _showEditIpDialog(payload);
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.cyanAccent.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.edit,
+                                    color: Colors.cyanAccent,
+                                    size: 11,
+                                  ),
+                                  SizedBox(width: 2),
+                                  Text(
+                                    'Edit',
+                                    style: TextStyle(
+                                      color: Colors.cyanAccent,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -885,7 +927,23 @@ class _ReceiverScreenState extends State<ReceiverScreen>
                   ),
                 ),
               ],
-              const SizedBox(height: 20),
+              if (payload != null) ...[
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: () => _showEditIpDialog(payload),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.cyanAccent,
+                    side: const BorderSide(color: Colors.cyanAccent),
+                    minimumSize: const Size(double.infinity, 42),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  icon: const Icon(Icons.edit_location_alt_outlined, size: 16),
+                  label: const Text('Enter Sender IP Manually'),
+                ),
+              ],
+              const SizedBox(height: 16),
               Row(
                 children: [
                   Expanded(
@@ -928,6 +986,114 @@ class _ReceiverScreenState extends State<ReceiverScreen>
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  void _showEditIpDialog(BeamPayload payload) {
+    final controller = TextEditingController(text: payload.ip);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF161B22),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: const Row(
+          children: [
+            Icon(Icons.edit_location_alt_rounded, color: Colors.cyanAccent),
+            SizedBox(width: 8),
+            Text(
+              'Enter Sender IP',
+              style: TextStyle(color: Colors.white, fontSize: 18),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'If testing with an emulator or PC, enter the reachable IP (e.g. 192.168.100.192):',
+              style: TextStyle(color: Colors.white70, fontSize: 12),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              style: const TextStyle(
+                color: Colors.white,
+                fontFamily: 'monospace',
+              ),
+              decoration: InputDecoration(
+                hintText: 'e.g. 192.168.100.192',
+                hintStyle: const TextStyle(color: Colors.white30),
+                filled: true,
+                fillColor: const Color(0xFF21262D),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+              ),
+            ),
+            if (payload.candidateIps.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              const Text(
+                'Candidate IPs from QR code:',
+                style: TextStyle(color: Colors.white54, fontSize: 11),
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: payload.candidateIps.map((ip) {
+                  return ActionChip(
+                    label: Text(
+                      ip,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Colors.cyanAccent,
+                      ),
+                    ),
+                    backgroundColor: const Color(0xFF21262D),
+                    side: BorderSide(
+                      color: Colors.cyanAccent.withValues(alpha: 0.3),
+                    ),
+                    onPressed: () => controller.text = ip,
+                  );
+                }).toList(),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final newIp = controller.text.trim();
+              Navigator.of(ctx).pop();
+              if (newIp.isNotEmpty) {
+                final updatedPayload = _p2pService.updatePayloadHostIp(
+                  payload,
+                  newIp,
+                );
+                setState(() {
+                  _scannedPayload = updatedPayload;
+                });
+                _startDownloading(updatedPayload);
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.cyanAccent.shade700,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Connect'),
+          ),
+        ],
       ),
     );
   }
