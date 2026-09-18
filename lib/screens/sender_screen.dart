@@ -260,35 +260,46 @@ class _SenderScreenState extends State<SenderScreen> {
   }
 
   /// iOS only: shows a Live Photo grid picker using photo_manager.
-  /// Filters to assets that are Live Photos (isLivePhoto == true), displays
-  /// their photo thumbnail with a LIVE badge, and extracts the .mov motion
-  /// clip when the user selects one.
+  /// Scans both image and video asset types to find Live Photos,
+  /// then shows a photo-thumbnail grid with LIVE badge.
   Future<void> _pickLivePhotoAsVideo() async {
     try {
-      // Request photo library permission via photo_manager
       final PermissionState result =
           await PhotoManager.requestPermissionExtend();
-      if (!result.isAuth && !result.hasAccess) {
+
+      if (result == PermissionState.limited) {
+        // iOS 14+ "Selected Photos" — might not include Live Photos.
+        // Show a warning but still proceed so user can try.
         if (!mounted) return;
-        _showSnackBar('Photo library access is required to view Live Photos.');
+        final bool proceed = await _showLimitedAccessWarning() ?? false;
+        if (!proceed) return;
+      } else if (!result.isAuth && !result.hasAccess) {
+        if (!mounted) return;
+        _showSnackBar(
+          'Photo library access required. Enable in Settings → Privacy → Photos.',
+        );
         return;
       }
 
-      setState(() => _statusMessage = 'Scanning for Live Photos…');
+      setState(() => _statusMessage = 'Scanning for Live Photos\u2026');
 
-      // RequestType.video on iOS includes Live Photo motion clips alongside
-      // regular videos — filter by isLivePhoto to get only Live Photos.
-      final List<AssetPathEntity> albums = await PhotoManager.getAssetPathList(
-        type: RequestType.video,
-      );
-
-      final allLivePhotos = <AssetEntity>{};
-      for (final album in albums) {
-        final count = await album.assetCountAsync;
-        if (count == 0) continue;
-        final assets = await album.getAssetListRange(start: 0, end: count);
-        for (final asset in assets) {
-          if (asset.isLivePhoto) allLivePhotos.add(asset);
+      // Scan BOTH image and video request types.
+      // iOS can expose Live Photos as image assets or as video assets depending
+      // on the iOS version and how the album is indexed.
+      final allLivePhotos = <String, AssetEntity>{}; // keyed by id to dedupe
+      for (final type in [RequestType.image, RequestType.video]) {
+        final List<AssetPathEntity> albums =
+            await PhotoManager.getAssetPathList(type: type);
+        for (final album in albums) {
+          final count = await album.assetCountAsync;
+          if (count == 0) continue;
+          final assets =
+              await album.getAssetListRange(start: 0, end: count);
+          for (final asset in assets) {
+            if (asset.isLivePhoto) {
+              allLivePhotos[asset.id] = asset;
+            }
+          }
         }
       }
 
@@ -296,19 +307,21 @@ class _SenderScreenState extends State<SenderScreen> {
       if (!mounted) return;
 
       if (allLivePhotos.isEmpty) {
-        _showSnackBar(
-          'No Live Photos found. Live Photos require iPhone 6s (iOS 9+) or later.',
-        );
+        _showLivePhotoNotFoundDialog();
         return;
       }
 
-      // Show the photo-style grid bottom sheet
-      final AssetEntity? selected = await _showLivePhotoGridSheet(
-        allLivePhotos.toList(),
-      );
+      // Prefer video-type assets for extraction (gives .mov directly via .file)
+      final videoAssets = allLivePhotos.values
+          .where((a) => a.type == AssetType.video)
+          .toList();
+      final displayAssets =
+          videoAssets.isNotEmpty ? videoAssets : allLivePhotos.values.toList();
+
+      final AssetEntity? selected =
+          await _showLivePhotoGridSheet(displayAssets);
       if (selected == null || !mounted) return;
 
-      // Get the .mov motion file from the selected Live Photo
       final File? file = await selected.file;
       if (file == null || !await file.exists()) {
         _showSnackBar('Could not extract Live Photo motion video.');
@@ -321,9 +334,9 @@ class _SenderScreenState extends State<SenderScreen> {
           : p.basename(file.path);
       final String name =
           rawName.toLowerCase().endsWith('.mov') ||
-              rawName.toLowerCase().endsWith('.mp4')
-          ? rawName
-          : '${p.basenameWithoutExtension(rawName)}.mov';
+                  rawName.toLowerCase().endsWith('.mp4')
+              ? rawName
+              : '${p.basenameWithoutExtension(rawName)}.mov';
 
       _onFileSelected(file, name, size);
       if (!mounted) return;
@@ -332,6 +345,156 @@ class _SenderScreenState extends State<SenderScreen> {
       setState(() => _statusMessage = null);
       _showSnackBar('Error loading Live Photos: $e');
     }
+  }
+
+  /// Shows a warning when the user has granted only limited photo access.
+  /// Returns true if the user wants to proceed anyway, false to cancel.
+  Future<bool?> _showLimitedAccessWarning() {
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1C2128),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.lock_outline_rounded, color: Colors.orangeAccent, size: 20),
+            SizedBox(width: 8),
+            Text(
+              'Limited Photo Access',
+              style: TextStyle(color: Colors.white, fontSize: 15),
+            ),
+          ],
+        ),
+        content: const Text(
+          'You gave this app access to only selected photos.\n\n'
+          'Live Photos might not be visible. To see all:\n'
+          'Settings \u2192 Privacy \u2192 Photos \u2192 this app \u2192 All Photos',
+          style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: Colors.white54),
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(ctx).pop(false);
+              PhotoManager.openSetting();
+            },
+            child: const Text(
+              'Open Settings',
+              style: TextStyle(color: Colors.orangeAccent),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text(
+              'Continue',
+              style: TextStyle(color: Colors.cyanAccent),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Shows a helpful dialog when no Live Photos are found in the library.
+  void _showLivePhotoNotFoundDialog() {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1C2128),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(
+              Icons.motion_photos_off_rounded,
+              color: Colors.orangeAccent,
+              size: 22,
+            ),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'No Live Photos Found',
+                style: TextStyle(color: Colors.white, fontSize: 15),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Your photo library has no Live Photos yet.',
+              style: TextStyle(
+                color: Colors.white70,
+                fontSize: 13,
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 14),
+            _buildTipRow(
+              icon: Icons.camera_alt_rounded,
+              color: Colors.cyanAccent,
+              text: 'Open Camera \u2192 tap \u25ce (Live) button to turn it ON \u2192 take a photo',
+            ),
+            const SizedBox(height: 10),
+            _buildTipRow(
+              icon: Icons.photo_library_rounded,
+              color: Colors.purpleAccent,
+              text: 'If you have Live Photos, go to:\nSettings \u2192 Privacy \u2192 Photos \u2192 this app \u2192 All Photos',
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              PhotoManager.openSetting();
+            },
+            child: const Text(
+              'Open Settings',
+              style: TextStyle(color: Colors.cyanAccent),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text(
+              'OK',
+              style: TextStyle(color: Colors.white54),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTipRow({
+    required IconData icon,
+    required Color color,
+    required String text,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, color: color, size: 16),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            text,
+            style: const TextStyle(
+              color: Colors.white60,
+              fontSize: 12,
+              height: 1.5,
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   /// Shows a full-screen draggable grid of Live Photos.
