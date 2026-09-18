@@ -4,6 +4,7 @@ enum TransferState {
   initializing,
   waitingForPeer,
   transferring,
+  extracting,
   completed,
   cancelled,
   failed,
@@ -20,6 +21,15 @@ class TransferProgress {
   final String? errorMessage;
   final String? savedFilePath;
 
+  /// For [TransferState.extracting]: index of the file currently being saved (1-based)
+  final int currentFile;
+
+  /// For [TransferState.extracting]: total number of files in the ZIP
+  final int totalFiles;
+
+  /// For [TransferState.extracting]: name of the file currently being saved
+  final String? currentFileName;
+
   const TransferProgress({
     required this.state,
     this.transferredBytes = 0,
@@ -28,6 +38,9 @@ class TransferProgress {
     this.estimatedTimeRemaining,
     this.errorMessage,
     this.savedFilePath,
+    this.currentFile = 0,
+    this.totalFiles = 0,
+    this.currentFileName,
   });
 
   /// Factory for idle state
@@ -82,6 +95,20 @@ class TransferProgress {
   /// Factory for cancellation
   factory TransferProgress.cancelled() =>
       const TransferProgress(state: TransferState.cancelled);
+
+  /// Factory for ZIP extraction progress
+  factory TransferProgress.extracting({
+    required int currentFile,
+    required int totalFiles,
+    String? currentFileName,
+  }) {
+    return TransferProgress(
+      state: TransferState.extracting,
+      currentFile: currentFile,
+      totalFiles: totalFiles,
+      currentFileName: currentFileName,
+    );
+  }
 
   /// Ratio of completion between 0.0 and 1.0
   double get fraction {

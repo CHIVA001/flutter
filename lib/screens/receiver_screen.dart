@@ -818,6 +818,10 @@ class _ReceiverScreenState extends State<ReceiverScreen>
     }
 
     if (_isDownloading) {
+      // Show extraction progress card instead of download progress when extracting ZIP
+      if (_progress.state == TransferState.extracting) {
+        return _buildExtractingProgressView();
+      }
       return _buildDownloadProgressView();
     }
 
@@ -827,6 +831,149 @@ class _ReceiverScreenState extends State<ReceiverScreen>
 
     // Default: Scanner with overlay
     return _buildScannerWithOverlay();
+  }
+
+  /// Shows animated per-file extraction progress after ZIP download completes
+  Widget _buildExtractingProgressView() {
+    final current = _progress.currentFile;
+    final total = _progress.totalFiles;
+    final fileName = _progress.currentFileName ?? '';
+    final fraction = total > 0 ? (current / total).clamp(0.0, 1.0) : 0.0;
+
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: const Color(0xFF161B22),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: Colors.purpleAccent.withValues(alpha: 0.4),
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Header row
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.purpleAccent.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(
+                      Icons.folder_zip_rounded,
+                      color: Colors.purpleAccent,
+                      size: 28,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Saving to Gallery…',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 17,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'File $current of $total',
+                          style: const TextStyle(
+                            color: Colors.purpleAccent,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+
+              // Current file name
+              if (fileName.isNotEmpty) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0D1117),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.white12),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.insert_drive_file_rounded,
+                        color: Colors.white38,
+                        size: 16,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          fileName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+
+              // Progress bar
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: LinearProgressIndicator(
+                  value: fraction,
+                  minHeight: 14,
+                  backgroundColor: const Color(0xFF21262D),
+                  valueColor: const AlwaysStoppedAnimation<Color>(
+                    Colors.purpleAccent,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              // Percentage + count
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    '${(fraction * 100).toStringAsFixed(0)}%',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 18,
+                    ),
+                  ),
+                  Text(
+                    '$current / $total files',
+                    style: const TextStyle(color: Colors.white54, fontSize: 13),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildScannerWithOverlay() {

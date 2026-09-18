@@ -1039,6 +1039,7 @@ class P2pService {
   }
 
   /// Extracts a `.zip` archive and saves every contained image/video to Gallery.
+  /// Emits [TransferProgress.extracting] for each file so the UI can show live progress.
   Future<bool> _unzipAndSaveAll(File zipFile) async {
     try {
       final tmpDir = await getTemporaryDirectory();
@@ -1050,25 +1051,36 @@ class P2pService {
       final bytes = await zipFile.readAsBytes();
       final archive = ZipDecoder().decodeBytes(bytes);
 
+      // Count real files upfront for accurate progress
+      final fileEntries = archive.files
+          .where((e) => e.isFile && p.basename(e.name).isNotEmpty)
+          .toList();
+      final totalFiles = fileEntries.length;
+
       int saved = 0;
-      for (final entry in archive.files) {
-        if (!entry.isFile) continue;
-        // Flatten path: only keep the filename (ignore sub-folders in zip)
+      for (int i = 0; i < fileEntries.length; i++) {
+        final entry = fileEntries[i];
         final entryName = p.basename(entry.name);
-        if (entryName.isEmpty) continue;
+
+        // Emit extracting progress before saving each file
+        _receiverProgressController.add(
+          TransferProgress.extracting(
+            currentFile: i + 1,
+            totalFiles: totalFiles,
+            currentFileName: entryName,
+          ),
+        );
 
         final outFile = File('${extractDir.path}/$entryName');
         await outFile.writeAsBytes(entry.content as List<int>);
-        debugPrint('Extracted: $entryName');
+        debugPrint('Extracted (${i + 1}/$totalFiles): $entryName');
 
         if (await _saveToDeviceGallery(outFile)) saved++;
         await outFile.delete().catchError((_) => outFile);
       }
 
       await extractDir.delete(recursive: true).catchError((_) => extractDir);
-      debugPrint(
-        'ZIP: saved $saved / ${archive.files.length} files to gallery',
-      );
+      debugPrint('ZIP: saved $saved / $totalFiles files to gallery');
       return saved > 0;
     } catch (e) {
       debugPrint('ZIP unzip error: $e');
