@@ -267,9 +267,8 @@ class _SenderScreenState extends State<SenderScreen> {
     );
   }
 
-  /// Opens the multi-select gallery sheet (photos & videos).
-  /// Single selection: uses existing single-file flow.
-  /// Multiple selections: sets multi-file state for ZIP beaming.
+  /// Picks media (photos & videos) from the gallery using the native system picker.
+  /// Supports both single and multi-selection ("take the same before").
   Future<void> _pickFromGallery() async {
     try {
       final hasPermission = await _p2pService.requestSenderPermissions();
@@ -277,77 +276,47 @@ class _SenderScreenState extends State<SenderScreen> {
         _showSnackBar('Storage/photos permission required.');
         return;
       }
-      await _showMultiSelectGallerySheet();
+
+      List<XFile> pickedFiles = [];
+      try {
+        pickedFiles = await _picker.pickMultipleMedia();
+      } catch (_) {
+        final single = await _picker.pickMedia();
+        if (single != null) pickedFiles = [single];
+      }
+
+      if (pickedFiles.isEmpty) return;
+
+      if (pickedFiles.length == 1) {
+        final pickedFile = pickedFiles.first;
+        final file = File(pickedFile.path);
+        final size = await file.length();
+        final name = pickedFile.name.isNotEmpty
+            ? pickedFile.name
+            : p.basename(file.path);
+
+        _onFileSelected(file, name, size);
+        _detectLivePhoto(name);
+      } else {
+        final files = <File>[];
+        final names = <String>[];
+        int totalSize = 0;
+
+        for (final pickedFile in pickedFiles) {
+          final file = File(pickedFile.path);
+          final size = await file.length();
+          final name = pickedFile.name.isNotEmpty
+              ? pickedFile.name
+              : p.basename(file.path);
+          files.add(file);
+          names.add(name);
+          totalSize += size;
+        }
+
+        _onMultiFilesSelected(files, names, totalSize);
+      }
     } catch (e) {
       _showSnackBar('Error selecting media: $e');
-    }
-  }
-
-  /// Shows a multi-select photo/video grid. On confirm, sets single or multi state.
-  Future<void> _showMultiSelectGallerySheet() async {
-    final result = await PhotoManager.requestPermissionExtend();
-    if (!result.isAuth && !result.hasAccess) {
-      _showSnackBar('Photo library access required.');
-      return;
-    }
-
-    setState(() => _statusMessage = 'Loading gallery…');
-
-    final albums = await PhotoManager.getAssetPathList(type: RequestType.all);
-    if (albums.isEmpty) {
-      setState(() => _statusMessage = null);
-      _showSnackBar('No media found in your library.');
-      return;
-    }
-
-    final total = await albums.first.assetCountAsync;
-    final assets = await albums.first.getAssetListRange(
-      start: 0,
-      end: total.clamp(0, 600),
-    );
-
-    setState(() => _statusMessage = null);
-    if (!mounted) return;
-
-    final List<AssetEntity>? selected =
-        await showModalBottomSheet<List<AssetEntity>>(
-          context: context,
-          isScrollControlled: true,
-          backgroundColor: const Color(0xFF161B22),
-          shape: const RoundedRectangleBorder(
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          ),
-          builder: (ctx) => _MultiSelectGallerySheet(assets: assets),
-        );
-
-    if (selected == null || selected.isEmpty || !mounted) return;
-
-    setState(() => _statusMessage = 'Preparing files…');
-
-    final files = <File>[];
-    final names = <String>[];
-    int totalSize = 0;
-
-    for (final asset in selected) {
-      final file = await asset.file;
-      if (file == null) continue;
-      files.add(file);
-      final name = asset.title?.isNotEmpty == true
-          ? asset.title!
-          : p.basename(file.path);
-      names.add(name);
-      totalSize += await file.length();
-    }
-
-    setState(() => _statusMessage = null);
-    if (!mounted || files.isEmpty) return;
-
-    if (files.length == 1) {
-      _onFileSelected(files.first, names.first, totalSize);
-      // Background Live Photo check for single image
-      _detectLivePhoto(names.first);
-    } else {
-      _onMultiFilesSelected(files, names, totalSize);
     }
   }
 
