@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -165,7 +166,8 @@ class _ReceiverScreenState extends State<ReceiverScreen>
                     ),
                   ],
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 18),
+                _buildScanPreview(payload),
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
@@ -434,6 +436,148 @@ class _ReceiverScreenState extends State<ReceiverScreen>
         );
       },
     );
+  }
+
+  /// Displays an instant image preview if thumbnail is encoded in the QR code,
+  /// or loads a cloud image preview if online beam is active.
+  Widget _buildScanPreview(BeamPayload payload) {
+    final fileName = payload.fileName.toLowerCase();
+    final isImage = fileName.endsWith('.jpg') ||
+        fileName.endsWith('.jpeg') ||
+        fileName.endsWith('.png') ||
+        fileName.endsWith('.webp') ||
+        fileName.endsWith('.gif') ||
+        fileName.endsWith('.bmp');
+
+    // 1. Instant QR encoded thumbnail preview (works offline before Wi-Fi connect)
+    if (payload.thumbnailBase64 != null && payload.thumbnailBase64!.isNotEmpty) {
+      try {
+        final imageBytes = base64Decode(payload.thumbnailBase64!);
+        return Container(
+          height: 170,
+          width: double.infinity,
+          margin: const EdgeInsets.only(bottom: 16),
+          decoration: BoxDecoration(
+            color: const Color(0xFF161B22),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.cyanAccent.withValues(alpha: 0.4)),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Image.memory(
+                  imageBytes,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) => const Center(
+                    child: Icon(Icons.broken_image, color: Colors.white38),
+                  ),
+                ),
+                Positioned(
+                  bottom: 8,
+                  left: 8,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.75),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.photo_outlined, color: Colors.cyanAccent, size: 13),
+                        SizedBox(width: 4),
+                        Text(
+                          'Instant Image Preview',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      } catch (e) {
+        debugPrint('Failed to decode QR thumbnail: $e');
+      }
+    }
+
+    // 2. Online Cloud image preview
+    if (payload.isOnline && isImage) {
+      return Container(
+        height: 170,
+        width: double.infinity,
+        margin: const EdgeInsets.only(bottom: 16),
+        decoration: BoxDecoration(
+          color: const Color(0xFF161B22),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.purpleAccent.withValues(alpha: 0.4)),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Image.network(
+                payload.downloadUrl,
+                fit: BoxFit.cover,
+                loadingBuilder: (ctx, child, progress) {
+                  if (progress == null) return child;
+                  return const Center(
+                    child: SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.purpleAccent,
+                      ),
+                    ),
+                  );
+                },
+                errorBuilder: (context, error, stackTrace) => const Center(
+                  child: Icon(Icons.broken_image, color: Colors.white38),
+                ),
+              ),
+              Positioned(
+                bottom: 8,
+                left: 8,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.75),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.cloud_done_rounded, color: Colors.purpleAccent, size: 13),
+                      SizedBox(width: 4),
+                      Text(
+                        'Cloud Image Preview',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return const SizedBox.shrink();
   }
 
   Widget _buildMetaRow(IconData icon, String label, String value) {
@@ -855,7 +999,9 @@ class _ReceiverScreenState extends State<ReceiverScreen>
                       _downloadedFile!.path.toLowerCase().endsWith('.jpeg') ||
                       _downloadedFile!.path.toLowerCase().endsWith('.png') ||
                       _downloadedFile!.path.toLowerCase().endsWith('.webp') ||
-                      _downloadedFile!.path.toLowerCase().endsWith('.gif'))) ...[
+                      _downloadedFile!.path.toLowerCase().endsWith(
+                        '.gif',
+                      ))) ...[
                 ClipRRect(
                   borderRadius: BorderRadius.circular(12),
                   child: Container(
@@ -864,23 +1010,27 @@ class _ReceiverScreenState extends State<ReceiverScreen>
                       border: Border.all(color: Colors.white24),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Image.file(
-                      _downloadedFile!,
-                      fit: BoxFit.cover,
-                    ),
+                    child: Image.file(_downloadedFile!, fit: BoxFit.cover),
                   ),
                 ),
                 const SizedBox(height: 14),
               ],
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
                 decoration: BoxDecoration(
                   color: const Color(0xFF21262D),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.folder_outlined, color: Colors.cyanAccent, size: 16),
+                    const Icon(
+                      Icons.folder_outlined,
+                      color: Colors.cyanAccent,
+                      size: 16,
+                    ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
@@ -895,11 +1045,17 @@ class _ReceiverScreenState extends State<ReceiverScreen>
                       ),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.copy, size: 16, color: Colors.cyanAccent),
+                      icon: const Icon(
+                        Icons.copy,
+                        size: 16,
+                        color: Colors.cyanAccent,
+                      ),
                       tooltip: 'Copy Path',
                       onPressed: () {
                         if (_downloadedFile != null) {
-                          Clipboard.setData(ClipboardData(text: _downloadedFile!.path));
+                          Clipboard.setData(
+                            ClipboardData(text: _downloadedFile!.path),
+                          );
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
                               content: Text('File path copied to clipboard'),

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_p2p_connection/flutter_p2p_connection.dart';
@@ -235,6 +236,7 @@ class P2pService {
     final fileSize = await videoFile.length();
     final fileName = p.basename(videoFile.path);
     final mimeType = _detectMimeType(videoFile.path);
+    final thumbBase64 = await generateThumbnailBase64(videoFile);
 
     _listenToIncomingHttpRequests();
 
@@ -254,6 +256,7 @@ class P2pService {
       fileSize: fileSize,
       mimeType: mimeType,
       token: _currentSessionToken!,
+      thumbnailBase64: thumbBase64,
     );
   }
 
@@ -278,6 +281,7 @@ class P2pService {
       version: payload.version,
       onlineUrl: payload.onlineUrl,
       isOnline: payload.isOnline,
+      thumbnailBase64: payload.thumbnailBase64,
     );
   }
 
@@ -381,6 +385,8 @@ class P2pService {
       final directDownloadUrl = files[0]['url'] as String;
       debugPrint('Online Cloud Relay URL generated: $directDownloadUrl');
 
+      final thumbBase64 = await generateThumbnailBase64(videoFile);
+
       _senderProgressController.add(TransferProgress.waitingForPeer());
 
       return BeamPayload.online(
@@ -388,6 +394,7 @@ class P2pService {
         fileName: fileName,
         fileSize: fileSize,
         mimeType: mimeType,
+        thumbnailBase64: thumbBase64,
       );
     } catch (e) {
       _senderProgressController.add(TransferProgress.failed(e.toString()));
@@ -905,6 +912,39 @@ class P2pService {
       await beamDir.create(recursive: true);
     }
     return beamDir;
+  }
+
+  /// Generates a compact base64 thumbnail string for image files using dart:ui
+  static Future<String?> generateThumbnailBase64(File file) async {
+    final ext = p.extension(file.path).toLowerCase();
+    final isImage = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp'].contains(ext);
+    if (!isImage) return null;
+
+    try {
+      final bytes = await file.readAsBytes();
+      // If original image is already tiny (< 2KB), encode directly
+      if (bytes.length < 2000) {
+        return base64Encode(bytes);
+      }
+
+      final codec = await ui.instantiateImageCodec(
+        bytes,
+        targetWidth: 64,
+        targetHeight: 64,
+      );
+      final frame = await codec.getNextFrame();
+      final byteData = await frame.image.toByteData(format: ui.ImageByteFormat.png);
+      if (byteData != null) {
+        final thumbBytes = byteData.buffer.asUint8List();
+        // Keep QR payload compact (under 3.5KB)
+        if (thumbBytes.length < 3500) {
+          return base64Encode(thumbBytes);
+        }
+      }
+    } catch (e) {
+      debugPrint('Note: Thumbnail generation skipped ($e)');
+    }
+    return null;
   }
 
   /// Total service disposal

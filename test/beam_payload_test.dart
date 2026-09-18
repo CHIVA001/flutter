@@ -60,6 +60,26 @@ void main() {
       expect(directLinkParsed.fileName, equals('my_clip.mp4'));
     });
 
+    test('Serializes and parses payload with image thumbnailBase64', () {
+      const thumbData = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+      const payload = BeamPayload(
+        ip: '192.168.100.192',
+        port: 8888,
+        fileName: 'vacation_photo.jpg',
+        fileSize: 4096,
+        token: 'auth_photo_123',
+        mimeType: 'image/jpeg',
+        thumbnailBase64: thumbData,
+      );
+
+      final jsonStr = payload.toJsonString();
+      final parsed = BeamPayload.fromJsonString(jsonStr);
+
+      expect(parsed.thumbnailBase64, equals(thumbData));
+      expect(parsed.fileName, equals('vacation_photo.jpg'));
+      expect(parsed.mimeType, equals('image/jpeg'));
+    });
+
     test('Throws FormatException on invalid payload', () {
       expect(
         () => BeamPayload.fromJsonString('{"invalid": "data"}'),

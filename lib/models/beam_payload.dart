@@ -39,6 +39,9 @@ class BeamPayload {
   /// Whether this transfer is hosted online across public networks
   final bool isOnline;
 
+  /// Optional base64 encoded micro-thumbnail for instant offline QR image preview
+  final String? thumbnailBase64;
+
   const BeamPayload({
     this.ssid,
     this.password,
@@ -52,6 +55,7 @@ class BeamPayload {
     this.version = 1,
     this.onlineUrl,
     this.isOnline = false,
+    this.thumbnailBase64,
   });
 
   /// Convenience constructor for online cloud transfers
@@ -60,6 +64,7 @@ class BeamPayload {
     required String fileName,
     required int fileSize,
     String mimeType = 'video/mp4',
+    String? thumbnailBase64,
   }) {
     final uri = Uri.parse(onlineUrl);
     return BeamPayload(
@@ -71,6 +76,7 @@ class BeamPayload {
       token: '',
       onlineUrl: onlineUrl,
       isOnline: true,
+      thumbnailBase64: thumbnailBase64,
     );
   }
 
@@ -89,6 +95,8 @@ class BeamPayload {
       'size': fileSize,
       'mime': mimeType,
       'token': token,
+      if (thumbnailBase64 != null && thumbnailBase64!.isNotEmpty)
+        'thumb': thumbnailBase64,
     };
   }
 
@@ -130,6 +138,7 @@ class BeamPayload {
       token: json['token'] as String? ?? '',
       onlineUrl: onlineUrl,
       isOnline: isOnline,
+      thumbnailBase64: json['thumb'] as String?,
     );
   }
 
