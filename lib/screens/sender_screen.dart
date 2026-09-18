@@ -1042,7 +1042,44 @@ class _SenderScreenState extends State<SenderScreen> {
             ],
           ),
         ),
-        if (_payload!.ip.startsWith('10.0.2.') ||
+        if (_payload!.ip == '192.168.100.192') ...[
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.teal.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.tealAccent.withValues(alpha: 0.3)),
+            ),
+            child: const Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.check_circle_outline, color: Colors.tealAccent, size: 16),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'PC Wi-Fi Bridge Active (192.168.100.192):',
+                        style: TextStyle(
+                          color: Colors.tealAccent,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      SizedBox(height: 2),
+                      Text(
+                        'Physical devices on the same Wi-Fi can scan this QR code to download directly via adb forward.',
+                        style: TextStyle(color: Colors.white70, fontSize: 11),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ] else if (_payload!.ip.startsWith('10.0.2.') ||
             _payload!.candidateIps.any((ip) => ip.startsWith('10.0.2.'))) ...[
           const SizedBox(height: 10),
           Container(
@@ -1052,29 +1089,59 @@ class _SenderScreenState extends State<SenderScreen> {
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
             ),
-            child: Row(
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(Icons.info_outline, color: Colors.amber, size: 16),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Android Emulator detected:',
-                        style: TextStyle(
-                          color: Colors.amber,
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                        ),
+                const Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.info_outline, color: Colors.amber, size: 16),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Android Emulator NAT detected:',
+                            style: TextStyle(
+                              color: Colors.amber,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          SizedBox(height: 2),
+                          Text(
+                            'Real phones cannot reach 10.0.2.x directly.\nSwitch to your PC Wi-Fi IP so phones can connect:',
+                            style: TextStyle(color: Colors.white70, fontSize: 11),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 2),
-                      const Text(
-                        'Real phones cannot reach 10.0.2.x directly.\nRun: adb forward tcp:8888 tcp:8888\nThen tap Edit above to set your PC Wi-Fi IP.',
-                        style: TextStyle(color: Colors.white70, fontSize: 11),
-                      ),
-                    ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    setState(() {
+                      _payload = _p2pService.updatePayloadHostIp(
+                        _payload!,
+                        '192.168.100.192',
+                      );
+                    });
+                    _showSnackBar('Host IP switched to 192.168.100.192');
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.amber.shade700,
+                    foregroundColor: Colors.black,
+                    minimumSize: const Size(double.infinity, 34),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  icon: const Icon(Icons.swap_horiz, size: 14),
+                  label: const Text(
+                    'Use PC Wi-Fi IP (192.168.100.192)',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
                   ),
                 ),
               ],

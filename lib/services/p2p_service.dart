@@ -177,6 +177,13 @@ class P2pService {
         )
         .toList();
 
+    // If only emulator NAT addresses are present (10.0.2.x), automatically include
+    // the host PC's Wi-Fi LAN IP (192.168.100.192) so physical phones on the same Wi-Fi
+    // can connect seamlessly via 'adb forward tcp:8888 tcp:8888'.
+    if (validIps.isNotEmpty && validIps.every((ip) => ip.startsWith('10.0.2.'))) {
+      validIps.insert(0, '192.168.100.192');
+    }
+
     // Determine primary IP:
     // If overrideHostIp is given, use it. Otherwise, prioritize standard routable Wi-Fi
     // LAN subnets, excluding Android Wi-Fi Direct (192.168.49.x) and emulator-internal NAT (10.0.2.x).
