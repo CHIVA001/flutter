@@ -36,6 +36,10 @@ class _SenderScreenState extends State<SenderScreen> {
   String? _statusMessage;
   bool _isOnlineMode = false;
 
+  /// Set when the picked gallery photo is a Live Photo (iOS only).
+  /// Null means either not iOS, not an image, or not detected as Live Photo.
+  AssetEntity? _livePhotoAsset;
+
   @override
   void initState() {
     super.initState();
@@ -64,6 +68,7 @@ class _SenderScreenState extends State<SenderScreen> {
       _payload = null;
       _progress = TransferProgress.idle();
       _statusMessage = null;
+      _livePhotoAsset = null; // reset; _detectLivePhoto sets it if applicable
     });
   }
 
@@ -244,7 +249,6 @@ class _SenderScreenState extends State<SenderScreen> {
       }
 
       final XFile? pickedFile = await _picker.pickMedia();
-
       if (pickedFile == null) return;
 
       final file = File(pickedFile.path);
@@ -254,8 +258,96 @@ class _SenderScreenState extends State<SenderScreen> {
           : p.basename(file.path);
 
       _onFileSelected(file, name, size);
+
+      // Detect in background if the picked file is a Live Photo (iOS only)
+      _detectLivePhoto(pickedFile.name);
     } catch (e) {
       _showSnackBar('Error selecting media: $e');
+    }
+  }
+
+  /// Checks whether [fileName] matches a Live Photo in the photo library.
+  /// If found, sets [_livePhotoAsset] so the UI can show a LIVE badge
+  /// and offer a "Use motion clip" button.
+  Future<void> _detectLivePhoto(String fileName) async {
+    if (!Platform.isIOS) return;
+
+    final ext = p.extension(fileName).toLowerCase();
+    // Only images can be Live Photos
+    const imageExts = {'.jpg', '.jpeg', '.heic', '.heif', '.png'};
+    if (!imageExts.contains(ext)) return;
+
+    try {
+      final result = await PhotoManager.requestPermissionExtend();
+      if (!result.isAuth && !result.hasAccess) return;
+
+      final String baseName = p
+          .basenameWithoutExtension(fileName)
+          .toUpperCase();
+
+      final List<AssetPathEntity> albums = await PhotoManager.getAssetPathList(
+        type: RequestType.image,
+      );
+      if (albums.isEmpty) return;
+
+      // Search the most recent 100 photos for a matching Live Photo
+      final int total = await albums.first.assetCountAsync;
+      final int scanCount = total.clamp(0, 100);
+      final recent = await albums.first.getAssetListRange(
+        start: 0,
+        end: scanCount,
+      );
+
+      for (final asset in recent) {
+        if (!asset.isLivePhoto) continue;
+        final assetBase = p
+            .basenameWithoutExtension(asset.title ?? '')
+            .toUpperCase();
+        if (assetBase.isNotEmpty && assetBase == baseName) {
+          if (mounted) setState(() => _livePhotoAsset = asset);
+          return;
+        }
+      }
+    } catch (_) {
+      // Detection is best-effort; ignore errors
+    }
+  }
+
+  /// Switches the current selection from the static image to the
+  /// Live Photo's .mov motion clip.
+  Future<void> _switchToLivePhotoMotion() async {
+    final asset = _livePhotoAsset;
+    if (asset == null) return;
+
+    setState(() => _statusMessage = 'Extracting motion clip…');
+    try {
+      final File? file = await asset.file;
+      if (file == null || !await file.exists()) {
+        _showSnackBar('Could not extract motion video.');
+        return;
+      }
+      final int size = await file.length();
+      final String rawName = asset.title ?? p.basename(file.path);
+      final String name =
+          rawName.toLowerCase().endsWith('.mov') ||
+              rawName.toLowerCase().endsWith('.mp4')
+          ? rawName
+          : '${p.basenameWithoutExtension(rawName)}.mov';
+
+      if (!mounted) return;
+      setState(() {
+        _selectedVideo = file;
+        _videoSize = size;
+        _videoName = name;
+        _payload = null;
+        _progress = TransferProgress.idle();
+        _statusMessage = null;
+        _livePhotoAsset = null; // already switched — hide the badge
+      });
+      _showSnackBar('Switched to Live Photo motion clip ✅');
+    } catch (e) {
+      setState(() => _statusMessage = null);
+      _showSnackBar('Error: $e');
     }
   }
 
@@ -973,50 +1065,137 @@ class _SenderScreenState extends State<SenderScreen> {
                 color: const Color(0xFF21262D),
                 borderRadius: BorderRadius.circular(14),
               ),
-              child: Row(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(
-                    _getFileIcon(_videoName),
-                    color: _getFileColor(_videoName),
-                    size: 36,
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _videoName ?? 'selected_file',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 14,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          _formatBytes(_videoSize ?? 0),
-                          style: TextStyle(
-                            color: _getFileColor(_videoName),
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (_payload == null)
-                    IconButton(
-                      icon: const Icon(
-                        Icons.swap_horiz_rounded,
-                        color: Colors.white70,
-                        size: 24,
+                  Row(
+                    children: [
+                      Icon(
+                        _getFileIcon(_videoName),
+                        color: _getFileColor(_videoName),
+                        size: 36,
                       ),
-                      onPressed: _showSourceBottomSheet,
-                      tooltip: 'Change Source',
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    _videoName ?? 'selected_file',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ),
+                                // LIVE badge — only shown when a Live Photo is detected
+                                if (_livePhotoAsset != null) ...[
+                                  const SizedBox(width: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      gradient: const LinearGradient(
+                                        colors: [
+                                          Color(0xFF059669),
+                                          Color(0xFF10B981),
+                                        ],
+                                      ),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: const Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.motion_photos_on_rounded,
+                                          color: Colors.white,
+                                          size: 10,
+                                        ),
+                                        SizedBox(width: 3),
+                                        Text(
+                                          'LIVE',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.bold,
+                                            letterSpacing: 0.5,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              _formatBytes(_videoSize ?? 0),
+                              style: TextStyle(
+                                color: _getFileColor(_videoName),
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (_payload == null)
+                        IconButton(
+                          icon: const Icon(
+                            Icons.swap_horiz_rounded,
+                            color: Colors.white70,
+                            size: 24,
+                          ),
+                          onPressed: _showSourceBottomSheet,
+                          tooltip: 'Change Source',
+                        ),
+                    ],
+                  ),
+                  // “Use motion clip” button — only shown when Live Photo detected
+                  if (_livePhotoAsset != null && _payload == null) ...[
+                    const SizedBox(height: 10),
+                    const Divider(color: Colors.white12, height: 1),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      child: TextButton.icon(
+                        onPressed: _switchToLivePhotoMotion,
+                        style: TextButton.styleFrom(
+                          backgroundColor: const Color(0xFF059669)
+                              .withValues(alpha: 0.15),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            side: BorderSide(
+                              color: const Color(0xFF10B981)
+                                  .withValues(alpha: 0.4),
+                            ),
+                          ),
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                        ),
+                        icon: const Icon(
+                          Icons.motion_photos_on_rounded,
+                          color: Color(0xFF10B981),
+                          size: 16,
+                        ),
+                        label: const Text(
+                          'Use motion clip (.mov) instead',
+                          style: TextStyle(
+                            color: Color(0xFF10B981),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
                     ),
+                  ],
                 ],
               ),
             ),
