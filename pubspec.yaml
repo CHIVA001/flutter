@@ -35,6 +35,7 @@ dependencies:
   gal: ^2.3.3
   photo_manager: ^3.3.0
   archive: ^4.3.0
+  video_player: ^2.14.0
 
 
 dev_dependencies:

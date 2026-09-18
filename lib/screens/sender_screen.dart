@@ -8,6 +8,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as p;
 import 'package:photo_manager/photo_manager.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:video_player/video_player.dart';
 
 import '../models/beam_payload.dart';
 import '../models/transfer_progress.dart';
@@ -140,6 +141,178 @@ class _SenderScreenState extends State<SenderScreen> {
       }
       _onMultiFilesSelected(updatedFiles, updatedNames, totalSize);
     }
+  }
+
+  /// Appends new files to the current selection (single or multi).
+  void _appendFiles(List<File> newFiles, List<String> newNames, int addedSize) {
+    if (newFiles.isEmpty) return;
+
+    final existingFiles = _multiFiles.isNotEmpty
+        ? List<File>.from(_multiFiles)
+        : (_selectedVideo != null ? [_selectedVideo!] : <File>[]);
+    final existingNames = _multiFileNames.isNotEmpty
+        ? List<String>.from(_multiFileNames)
+        : (_videoName != null ? [_videoName!] : <String>[]);
+    final currentTotal = _multiFiles.isNotEmpty
+        ? _multiTotalSize
+        : (_videoSize ?? 0);
+
+    for (int i = 0; i < newFiles.length; i++) {
+      if (!existingFiles.any((f) => f.path == newFiles[i].path)) {
+        existingFiles.add(newFiles[i]);
+        existingNames.add(newNames[i]);
+      }
+    }
+
+    if (existingFiles.length == 1) {
+      _onFileSelected(existingFiles.first, existingNames.first, currentTotal + addedSize);
+      _detectLivePhoto(existingNames.first);
+    } else {
+      _onMultiFilesSelected(existingFiles, existingNames, currentTotal + addedSize);
+    }
+  }
+
+  /// Adds more media files from gallery to the existing selection.
+  Future<void> _addMoreFromGallery() async {
+    try {
+      final hasPermission = await _p2pService.requestSenderPermissions();
+      if (!hasPermission) {
+        _showSnackBar('Storage/photos permission required.');
+        return;
+      }
+
+      List<XFile> pickedFiles = [];
+      try {
+        pickedFiles = await _picker.pickMultipleMedia();
+      } catch (_) {
+        final single = await _picker.pickMedia();
+        if (single != null) pickedFiles = [single];
+      }
+
+      if (pickedFiles.isEmpty) return;
+
+      final newFiles = <File>[];
+      final newNames = <String>[];
+      int newSize = 0;
+
+      for (final pf in pickedFiles) {
+        final file = File(pf.path);
+        final name = pf.name.isNotEmpty ? pf.name : p.basename(file.path);
+        final size = await file.length();
+        newFiles.add(file);
+        newNames.add(name);
+        newSize += size;
+      }
+
+      _appendFiles(newFiles, newNames, newSize);
+    } catch (e) {
+      _showSnackBar('Error adding media: $e');
+    }
+  }
+
+  /// Adds more files from filesystem to the existing selection.
+  Future<void> _addMoreFromFileSystem() async {
+    try {
+      final hasPermission = await _p2pService.requestSenderPermissions();
+      if (!hasPermission) {
+        _showSnackBar('Storage permission is required.');
+        return;
+      }
+
+      final List<PlatformFile> picked = await FilePicker.pickFiles(
+        type: FileType.any,
+      );
+
+      if (picked.isEmpty) return;
+
+      final newFiles = <File>[];
+      final newNames = <String>[];
+      int newSize = 0;
+
+      for (final pf in picked) {
+        if (pf.path == null) continue;
+        final file = File(pf.path!);
+        final size = await file.length();
+        newFiles.add(file);
+        newNames.add(pf.name);
+        newSize += size;
+      }
+
+      _appendFiles(newFiles, newNames, newSize);
+    } catch (e) {
+      _showSnackBar('Error adding files: $e');
+    }
+  }
+
+  /// Shows the bottom sheet to add more files to current selection.
+  void _showAddMoreBottomSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF161B22),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 42,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.white24,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                const Text(
+                  'Add More Files',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Choose additional photos, videos, or files to beam',
+                  style: TextStyle(color: Colors.white54, fontSize: 13),
+                ),
+                const SizedBox(height: 20),
+                _buildSourceOptionTile(
+                  title: 'Photos & Videos',
+                  subtitle: 'Add more photos or videos from gallery',
+                  icon: Icons.photo_library_rounded,
+                  colors: [const Color(0xFF4F46E5), const Color(0xFF7C3AED)],
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    _addMoreFromGallery();
+                  },
+                ),
+                const SizedBox(height: 12),
+                _buildSourceOptionTile(
+                  title: 'Browse Files & Documents',
+                  subtitle: 'Add documents or any file from device storage',
+                  icon: Icons.folder_open_rounded,
+                  colors: [const Color(0xFF0284C7), const Color(0xFF0D9488)],
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    _addMoreFromFileSystem();
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   /// Shows the bottom sheet with source options: Photo/Video Gallery, Camera, and Files
@@ -1122,7 +1295,21 @@ class _SenderScreenState extends State<SenderScreen> {
     return ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.heic'].contains(ext);
   }
 
+  bool _isVideoFile(String? name) {
+    if (name == null) return false;
+    final ext = p.extension(name).toLowerCase();
+    return ['.mp4', '.mov', '.mkv', '.avi', '.webm', '.3gp', '.m4v'].contains(ext);
+  }
+
   void _previewFile(File file, String? name) {
+    if (_isVideoFile(name)) {
+      showDialog(
+        context: context,
+        builder: (ctx) => _VideoPreviewDialog(file: file, title: name),
+      );
+      return;
+    }
+
     final isImg = _isImageFile(name);
     showDialog(
       context: context,
@@ -2439,5 +2626,201 @@ class _SenderScreenState extends State<SenderScreen> {
       return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
     }
     return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Video Preview & Playback Dialog
+// ---------------------------------------------------------------------------
+
+class _VideoPreviewDialog extends StatefulWidget {
+  final File file;
+  final String? title;
+
+  const _VideoPreviewDialog({required this.file, this.title});
+
+  @override
+  State<_VideoPreviewDialog> createState() => _VideoPreviewDialogState();
+}
+
+class _VideoPreviewDialogState extends State<_VideoPreviewDialog> {
+  late VideoPlayerController _controller;
+  bool _isInitialized = false;
+  bool _hasError = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = VideoPlayerController.file(widget.file)
+      ..initialize().then((_) {
+        if (mounted) {
+          setState(() {
+            _isInitialized = true;
+          });
+          _controller.play();
+        }
+      }).catchError((_) {
+        if (mounted) {
+          setState(() {
+            _hasError = true;
+          });
+        }
+      });
+    _controller.addListener(() {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  String _formatDuration(Duration d) {
+    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$m:$s';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: const Color(0xFF161B22),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Header
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.play_circle_fill,
+                  color: Colors.indigoAccent,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    widget.title ?? 'Video Preview',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white70),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+              ],
+            ),
+          ),
+          if (_hasError)
+            Container(
+              height: 200,
+              alignment: Alignment.center,
+              child: const Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.error_outline, color: Colors.redAccent, size: 40),
+                  SizedBox(height: 8),
+                  Text(
+                    'Cannot play this video format',
+                    style: TextStyle(color: Colors.white70),
+                  ),
+                ],
+              ),
+            )
+          else if (!_isInitialized)
+            Container(
+              height: 200,
+              alignment: Alignment.center,
+              child: const CircularProgressIndicator(color: Colors.indigoAccent),
+            )
+          else
+            Flexible(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        if (_controller.value.isPlaying) {
+                          _controller.pause();
+                        } else {
+                          _controller.play();
+                        }
+                      });
+                    },
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        AspectRatio(
+                          aspectRatio: _controller.value.aspectRatio > 0
+                              ? _controller.value.aspectRatio
+                              : 16 / 9,
+                          child: VideoPlayer(_controller),
+                        ),
+                        if (!_controller.value.isPlaying)
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: const BoxDecoration(
+                              color: Colors.black54,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.play_arrow_rounded,
+                              color: Colors.white,
+                              size: 40,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  VideoProgressIndicator(
+                    _controller,
+                    allowScrubbing: true,
+                    colors: const VideoProgressColors(
+                      playedColor: Colors.indigoAccent,
+                      bufferedColor: Colors.white24,
+                      backgroundColor: Colors.white10,
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          _formatDuration(_controller.value.position),
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 12,
+                          ),
+                        ),
+                        Text(
+                          _formatDuration(_controller.value.duration),
+                          style: const TextStyle(
+                            color: Colors.white38,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
   }
 }
