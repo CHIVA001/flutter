@@ -1,0 +1,54 @@
+name: flutter_3_47_4
+description: "A new Flutter project."
+
+publish_to: 'none' 
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.13.3
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+
+  material_ui: any
+  cupertino_ui: any
+  # app info
+  package_info_plus: ^10.2.1 
+  # splash
+  flutter_native_splash: ^2.4.8
+  flutter_launcher_icons: ^0.14.4
+  # scanner
+  mobile_scanner: ^7.4.2
+  qr_flutter: ^4.1.0
+  # p2p
+  flutter_p2p_connection: ^3.0.3
+  path_provider: ^2.1.6
+  image_picker: ^1.2.3
+  permission_handler: ^11.4.0
+  intl: ^0.20.3
+  path: ^1.9.1
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^6.0.0
+
+
+flutter:
+
+  uses-material-design: true
+
+  assets:
+    - assets/
+
+
+  # fonts:
+  #   - family: Schyler
+  #     fonts:
+  #       - asset: fonts/Schyler-Regular.ttf
+  #       - asset: fonts/Schyler-Italic.ttf
+  #         style: italic
