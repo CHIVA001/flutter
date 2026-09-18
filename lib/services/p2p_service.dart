@@ -238,8 +238,6 @@ class P2pService {
     final fileSize = await videoFile.length();
     final fileName = p.basename(videoFile.path);
     final mimeType = _detectMimeType(videoFile.path);
-    final thumbBase64 = await generateThumbnailBase64(videoFile);
-
     _listenToIncomingHttpRequests();
 
     _senderProgressController.add(TransferProgress.waitingForPeer());
@@ -248,6 +246,8 @@ class P2pService {
       'Hosting on primary IP $primaryIp:$boundPort (Candidates: $validIps)',
     );
 
+    // NOTE: thumbnail is NOT embedded in QR payload — it is served via /preview
+    // endpoint to keep QR code compact and easily scannable.
     return BeamPayload(
       ssid: hotspotSsid,
       password: hotspotPassword,
@@ -258,7 +258,6 @@ class P2pService {
       fileSize: fileSize,
       mimeType: mimeType,
       token: _currentSessionToken!,
-      thumbnailBase64: thumbBase64,
     );
   }
 
@@ -388,16 +387,15 @@ class P2pService {
       final directDownloadUrl = files[0]['url'] as String;
       debugPrint('Online Cloud Relay URL generated: $directDownloadUrl');
 
-      final thumbBase64 = await generateThumbnailBase64(videoFile);
-
       _senderProgressController.add(TransferProgress.waitingForPeer());
 
+      // NOTE: thumbnail is not embedded in online QR payload either.
+      // For online transfers the receiver can fetch the image directly via onlineUrl.
       return BeamPayload.online(
         onlineUrl: directDownloadUrl,
         fileName: fileName,
         fileSize: fileSize,
         mimeType: mimeType,
-        thumbnailBase64: thumbBase64,
       );
     } catch (e) {
       _senderProgressController.add(TransferProgress.failed(e.toString()));

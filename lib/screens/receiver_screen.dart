@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -451,18 +450,11 @@ class _ReceiverScreenState extends State<ReceiverScreen>
         fileName.endsWith('.gif') ||
         fileName.endsWith('.bmp');
 
-    Uint8List? imageBytes;
-    if (payload.thumbnailBase64 != null &&
-        payload.thumbnailBase64!.isNotEmpty) {
-      try {
-        imageBytes = base64Decode(payload.thumbnailBase64!);
-      } catch (e) {
-        debugPrint('Failed to decode thumbnail: $e');
-      }
-    }
+    if (!isImage) return const SizedBox.shrink();
 
-    final hasPreview = imageBytes != null || (payload.isOnline && isImage);
-    if (!hasPreview) return const SizedBox.shrink();
+    // Thumbnail is loaded from the /preview endpoint — NOT from QR payload —
+    // so the QR code stays compact and scannable regardless of file size.
+    final previewUrl = payload.previewUrl;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
@@ -471,12 +463,7 @@ class _ReceiverScreenState extends State<ReceiverScreen>
         borderRadius: BorderRadius.circular(14),
         child: InkWell(
           borderRadius: BorderRadius.circular(14),
-          onTap: () => _showFullImageDialog(
-            context,
-            payload,
-            imageBytes: imageBytes,
-            imageUrl: payload.isOnline ? payload.downloadUrl : null,
-          ),
+          onTap: () => _showFullImageDialog(context, payload),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             decoration: BoxDecoration(
@@ -487,44 +474,50 @@ class _ReceiverScreenState extends State<ReceiverScreen>
             ),
             child: Row(
               children: [
-                // [icon]
-                if (imageBytes != null)
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Image.memory(
-                      imageBytes,
-                      width: 38,
-                      height: 38,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) => Container(
+                // [thumbnail icon] — loaded from /preview endpoint
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.network(
+                    previewUrl,
+                    width: 38,
+                    height: 38,
+                    fit: BoxFit.cover,
+                    loadingBuilder: (ctx, child, progress) {
+                      if (progress == null) return child;
+                      return Container(
                         width: 38,
                         height: 38,
                         decoration: BoxDecoration(
                           color: Colors.cyanAccent.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        child: const Icon(
-                          Icons.image,
-                          color: Colors.cyanAccent,
-                          size: 20,
+                        child: const Center(
+                          child: SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.cyanAccent,
+                            ),
+                          ),
                         ),
+                      );
+                    },
+                    errorBuilder: (context, error, stackTrace) => Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: Colors.cyanAccent.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(
+                        Icons.image_rounded,
+                        color: Colors.cyanAccent,
+                        size: 20,
                       ),
                     ),
-                  )
-                else
-                  Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      color: Colors.cyanAccent.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Icon(
-                      Icons.image_rounded,
-                      color: Colors.cyanAccent,
-                      size: 20,
-                    ),
                   ),
+                ),
                 const SizedBox(width: 12),
                 // [image title]
                 Expanded(
@@ -555,12 +548,7 @@ class _ReceiverScreenState extends State<ReceiverScreen>
                 const SizedBox(width: 8),
                 // [Preview button]
                 ElevatedButton.icon(
-                  onPressed: () => _showFullImageDialog(
-                    context,
-                    payload,
-                    imageBytes: imageBytes,
-                    imageUrl: payload.isOnline ? payload.downloadUrl : null,
-                  ),
+                  onPressed: () => _showFullImageDialog(context, payload),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.cyanAccent.shade700,
                     foregroundColor: Colors.white,
@@ -589,12 +577,7 @@ class _ReceiverScreenState extends State<ReceiverScreen>
   }
 
   /// Displays an AlertDialog with the full image when 'Preview' is tapped
-  void _showFullImageDialog(
-    BuildContext context,
-    BeamPayload payload, {
-    Uint8List? imageBytes,
-    String? imageUrl,
-  }) {
+  void _showFullImageDialog(BuildContext context, BeamPayload payload) {
     showDialog(
       context: context,
       builder: (dialogCtx) {
@@ -653,9 +636,6 @@ class _ReceiverScreenState extends State<ReceiverScreen>
                   fit: BoxFit.contain,
                   loadingBuilder: (ctx, child, progress) {
                     if (progress == null) return child;
-                    if (imageBytes != null) {
-                      return Image.memory(imageBytes, fit: BoxFit.contain);
-                    }
                     return const Center(
                       child: CircularProgressIndicator(
                         color: Colors.cyanAccent,
@@ -663,9 +643,6 @@ class _ReceiverScreenState extends State<ReceiverScreen>
                     );
                   },
                   errorBuilder: (context, error, stackTrace) {
-                    if (imageBytes != null) {
-                      return Image.memory(imageBytes, fit: BoxFit.contain);
-                    }
                     return const Center(
                       child: Icon(
                         Icons.broken_image,
