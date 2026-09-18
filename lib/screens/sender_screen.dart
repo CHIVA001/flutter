@@ -33,6 +33,7 @@ class _SenderScreenState extends State<SenderScreen> {
 
   bool _isInitializing = false;
   String? _statusMessage;
+  bool _isOnlineMode = false;
 
   @override
   void initState() {
@@ -303,21 +304,31 @@ class _SenderScreenState extends State<SenderScreen> {
     }
   }
 
-  /// Starts the local HTTP streaming server and generates the QR code payload
+  /// Starts the local HTTP streaming server or cloud relay and generates the QR code payload
   Future<void> _startBeaming() async {
     if (_selectedVideo == null) return;
 
     setState(() {
       _isInitializing = true;
-      _statusMessage = 'Initializing local P2P network & server...';
+      _statusMessage = _isOnlineMode
+          ? 'Uploading to high-speed online cloud relay...'
+          : 'Initializing local P2P network & server...';
     });
 
     try {
-      final payload = await _p2pService.startHosting(_selectedVideo!);
+      final BeamPayload payload;
+      if (_isOnlineMode) {
+        payload = await _p2pService.startOnlineHosting(_selectedVideo!);
+      } else {
+        payload = await _p2pService.startHosting(_selectedVideo!);
+      }
+
       setState(() {
         _payload = payload;
         _isInitializing = false;
-        _statusMessage = 'Waiting for receiver to scan QR code...';
+        _statusMessage = _isOnlineMode
+            ? 'Online link ready! Receiver can scan or paste link from any network.'
+            : 'Waiting for receiver to scan QR code...';
       });
     } catch (e) {
       setState(() {
@@ -374,15 +385,18 @@ class _SenderScreenState extends State<SenderScreen> {
             // Step 1: Video Selection Card
             _buildVideoSelectionCard(),
 
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
 
-            // Step 2: Hosting and QR Code or Live Progress
+            // Step 2: Mode Selector & Start Button
             if (_isInitializing)
               _buildLoadingCard()
             else if (_payload != null)
               _buildActiveTransferView()
-            else if (_selectedVideo != null)
-              _buildStartButton(),
+            else ...[
+              _buildTransferModeSelector(),
+              const SizedBox(height: 16),
+              if (_selectedVideo != null) _buildStartButton(),
+            ],
 
             const SizedBox(height: 30),
           ],
@@ -555,21 +569,116 @@ class _SenderScreenState extends State<SenderScreen> {
     );
   }
 
+  Widget _buildTransferModeSelector() {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: const Color(0xFF161B22),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white12),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: GestureDetector(
+              onTap: () {
+                if (_payload != null) return;
+                setState(() => _isOnlineMode = false);
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(
+                  color: !_isOnlineMode
+                      ? Colors.indigoAccent
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.wifi_rounded,
+                      size: 16,
+                      color: !_isOnlineMode ? Colors.white : Colors.white60,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Offline Direct',
+                      style: TextStyle(
+                        color: !_isOnlineMode ? Colors.white : Colors.white60,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: GestureDetector(
+              onTap: () {
+                if (_payload != null) return;
+                setState(() => _isOnlineMode = true);
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(
+                  color: _isOnlineMode
+                      ? Colors.purpleAccent.shade700
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.public_rounded,
+                      size: 16,
+                      color: _isOnlineMode ? Colors.white : Colors.white60,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Online Cloud',
+                      style: TextStyle(
+                        color: _isOnlineMode ? Colors.white : Colors.white60,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildStartButton() {
     return ElevatedButton.icon(
       onPressed: _startBeaming,
       style: ElevatedButton.styleFrom(
-        backgroundColor: Colors.indigoAccent,
+        backgroundColor: _isOnlineMode
+            ? Colors.purpleAccent.shade700
+            : Colors.indigoAccent,
         foregroundColor: Colors.white,
         padding: const EdgeInsets.symmetric(vertical: 16),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         elevation: 6,
-        shadowColor: Colors.indigoAccent.withValues(alpha: 0.5),
+        shadowColor: (_isOnlineMode ? Colors.purpleAccent : Colors.indigoAccent)
+            .withValues(alpha: 0.5),
       ),
-      icon: const Icon(Icons.qr_code_rounded, size: 24),
-      label: const Text(
-        'Generate Beam QR',
-        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+      icon: Icon(
+        _isOnlineMode ? Icons.cloud_upload_rounded : Icons.qr_code_rounded,
+        size: 24,
+      ),
+      label: Text(
+        _isOnlineMode
+            ? 'Beam via Online Cloud'
+            : 'Generate Beam QR (Offline P2P)',
+        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
       ),
     );
   }
@@ -693,7 +802,65 @@ class _SenderScreenState extends State<SenderScreen> {
           ),
         ),
         const SizedBox(height: 16),
-        if (_payload!.ssid != null && _payload!.password != null) ...[
+        if (_payload!.isOnline) ...[
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: Colors.purpleAccent.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: Colors.purpleAccent.withValues(alpha: 0.3),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(
+                  children: [
+                    Icon(Icons.public, color: Colors.purpleAccent, size: 18),
+                    SizedBox(width: 8),
+                    Text(
+                      'Online Cloud Beam',
+                      style: TextStyle(
+                        color: Colors.purpleAccent,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'Works across 4G/5G, different Wi-Fi networks, and simulator-to-device worldwide.',
+                  style: TextStyle(color: Colors.white70, fontSize: 12),
+                ),
+                const SizedBox(height: 10),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    Clipboard.setData(
+                      ClipboardData(text: _payload!.downloadUrl),
+                    );
+                    _showSnackBar('Download link copied to clipboard');
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.purpleAccent.shade700,
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size(double.infinity, 38),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  icon: const Icon(Icons.copy, size: 14),
+                  label: const Text(
+                    'Copy Download Link',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+        ] else if (_payload!.ssid != null && _payload!.password != null) ...[
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(

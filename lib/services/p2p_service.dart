@@ -269,7 +269,125 @@ class P2pService {
       mimeType: payload.mimeType,
       token: payload.token,
       version: payload.version,
+      onlineUrl: payload.onlineUrl,
+      isOnline: payload.isOnline,
     );
+  }
+
+  /// Uploads video to high-speed online cloud relay for cross-network beaming
+  /// (works across cellular 4G/5G, different Wi-Fi networks, and simulator-to-device worldwide).
+  Future<BeamPayload> startOnlineHosting(File videoFile) async {
+    if (!await videoFile.exists()) {
+      throw FileSystemException('Selected file does not exist', videoFile.path);
+    }
+
+    _senderProgressController.add(TransferProgress.initializing());
+    final fileSize = await videoFile.length();
+    final fileName = p.basename(videoFile.path);
+    final mimeType = _detectMimeType(videoFile.path);
+
+    final boundary =
+        '----WebKitFormBoundary${DateTime.now().millisecondsSinceEpoch}';
+    final uploadUri = Uri.parse('https://uguu.se/upload');
+
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 40);
+
+    try {
+      final header = utf8.encode(
+        '--$boundary\r\n'
+        'Content-Disposition: form-data; name="files[]"; filename="$fileName"\r\n'
+        'Content-Type: $mimeType\r\n\r\n',
+      );
+      final footer = utf8.encode('\r\n--$boundary--\r\n');
+      final totalContentLength = header.length + fileSize + footer.length;
+
+      final request = await client.postUrl(uploadUri);
+      request.headers.set(
+        'Content-Type',
+        'multipart/form-data; boundary=$boundary',
+      );
+      request.headers.set('Content-Length', totalContentLength.toString());
+
+      int uploadedBytes = 0;
+      int lastLoggedBytes = 0;
+      DateTime lastLoggedTime = DateTime.now();
+
+      // Write multipart header
+      request.add(header);
+      uploadedBytes += header.length;
+
+      // Stream file chunks with live upload progress
+      final fileStream = videoFile.openRead();
+      await for (final chunk in fileStream) {
+        request.add(chunk);
+        uploadedBytes += chunk.length;
+
+        final now = DateTime.now();
+        final elapsedMs = now.difference(lastLoggedTime).inMilliseconds;
+        if (elapsedMs >= 200 || uploadedBytes >= totalContentLength) {
+          final bytesSinceLast = uploadedBytes - lastLoggedBytes;
+          final speedMBps = elapsedMs > 0
+              ? (bytesSinceLast / (1024 * 1024)) / (elapsedMs / 1000.0)
+              : 0.0;
+
+          Duration? eta;
+          if (speedMBps > 0.05 && fileSize > 0) {
+            final remaining = totalContentLength - uploadedBytes;
+            final secs = (remaining / (speedMBps * 1024 * 1024)).round();
+            eta = Duration(seconds: secs);
+          }
+
+          _senderProgressController.add(
+            TransferProgress.transferring(
+              transferredBytes: uploadedBytes.clamp(0, fileSize),
+              totalBytes: fileSize,
+              speedMBps: speedMBps,
+              eta: eta,
+            ),
+          );
+          lastLoggedBytes = uploadedBytes;
+          lastLoggedTime = now;
+        }
+      }
+
+      // Write footer and close request
+      request.add(footer);
+      final response = await request.close();
+
+      if (response.statusCode != HttpStatus.ok) {
+        throw HttpException(
+          'Online cloud upload failed with status ${response.statusCode}',
+        );
+      }
+
+      final responseBody = await response.transform(utf8.decoder).join();
+      final dynamic decoded = jsonDecode(responseBody);
+      if (decoded is! Map || decoded['files'] == null) {
+        throw const FormatException('Invalid response from online cloud relay');
+      }
+
+      final files = decoded['files'] as List;
+      if (files.isEmpty) {
+        throw const FormatException('No files returned from cloud relay');
+      }
+
+      final directDownloadUrl = files[0]['url'] as String;
+      debugPrint('Online Cloud Relay URL generated: $directDownloadUrl');
+
+      _senderProgressController.add(TransferProgress.waitingForPeer());
+
+      return BeamPayload.online(
+        onlineUrl: directDownloadUrl,
+        fileName: fileName,
+        fileSize: fileSize,
+        mimeType: mimeType,
+      );
+    } catch (e) {
+      _senderProgressController.add(TransferProgress.failed(e.toString()));
+      rethrow;
+    } finally {
+      client.close(force: true);
+    }
   }
 
   /// Listens to incoming HTTP requests on the sender's local server.
@@ -459,8 +577,9 @@ class P2pService {
   }) async {
     _receiverProgressController.add(TransferProgress.initializing());
 
-    // 1. Auto-connect to Wi-Fi Direct group if credentials are provided on Android
-    if (Platform.isAndroid &&
+    // 1. Auto-connect to Wi-Fi Direct group if offline payload with credentials on Android
+    if (!payload.isOnline &&
+        Platform.isAndroid &&
         payload.ssid != null &&
         payload.password != null &&
         payload.ssid!.isNotEmpty) {
@@ -475,7 +594,6 @@ class P2pService {
         );
       } catch (e) {
         debugPrint('Wi-Fi Direct client connect attempt notice: $e');
-        // Proceed even if auto-connect reports non-fatal error
       }
     }
 
@@ -500,20 +618,24 @@ class P2pService {
       _receiverProgressController.add(TransferProgress.waitingForPeer());
 
       // Build ordered list of candidate URLs to attempt:
-      // 1. payload.downloadUrl (primary)
-      // 2. all payload.candidateIps
       final candidateUrls = <String>[];
-      candidateUrls.add(payload.downloadUrl);
-      for (final ip in payload.candidateIps) {
-        final altUrl =
-            'http://$ip:${payload.port}/stream?token=${payload.token}';
-        if (!candidateUrls.contains(altUrl)) {
-          candidateUrls.add(altUrl);
+      if (payload.isOnline) {
+        candidateUrls.add(payload.downloadUrl);
+      } else {
+        candidateUrls.add(payload.downloadUrl);
+        for (final ip in payload.candidateIps) {
+          final altUrl =
+              'http://$ip:${payload.port}/stream?token=${payload.token}';
+          if (!candidateUrls.contains(altUrl)) {
+            candidateUrls.add(altUrl);
+          }
         }
       }
 
       _activeHttpClient = HttpClient()
-        ..connectionTimeout = const Duration(seconds: 8);
+        ..connectionTimeout = payload.isOnline
+            ? const Duration(seconds: 25)
+            : const Duration(seconds: 8);
 
       HttpClientResponse? response;
       String? connectedUrl;

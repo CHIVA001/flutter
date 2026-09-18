@@ -37,6 +37,29 @@ void main() {
       );
     });
 
+    test('Serializes and parses online cloud beam payload', () {
+      final onlinePayload = BeamPayload.online(
+        onlineUrl: 'https://n.uguu.se/sample_video.mp4',
+        fileName: 'sample_video.mp4',
+        fileSize: 52428800, // 50MB
+      );
+
+      final jsonStr = onlinePayload.toJsonString();
+      final parsed = BeamPayload.fromJsonString(jsonStr);
+
+      expect(parsed.isOnline, isTrue);
+      expect(parsed.onlineUrl, equals('https://n.uguu.se/sample_video.mp4'));
+      expect(parsed.downloadUrl, equals('https://n.uguu.se/sample_video.mp4'));
+      expect(parsed.fileName, equals('sample_video.mp4'));
+      expect(parsed.fileSize, equals(52428800));
+
+      // Direct URL string parsing
+      final directLinkParsed = BeamPayload.fromJsonString('https://n.uguu.se/my_clip.mp4');
+      expect(directLinkParsed.isOnline, isTrue);
+      expect(directLinkParsed.downloadUrl, equals('https://n.uguu.se/my_clip.mp4'));
+      expect(directLinkParsed.fileName, equals('my_clip.mp4'));
+    });
+
     test('Throws FormatException on invalid payload', () {
       expect(
         () => BeamPayload.fromJsonString('{"invalid": "data"}'),

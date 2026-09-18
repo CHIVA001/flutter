@@ -185,119 +185,174 @@ class _ReceiverScreenState extends State<ReceiverScreen>
                         'File Size',
                         payload.formattedSize,
                       ),
-                      if (payload.ssid != null) ...[
+                      if (payload.isOnline) ...[
                         const Divider(color: Colors.white12, height: 16),
                         _buildMetaRow(
-                          Icons.wifi,
-                          'Wi-Fi Hotspot',
-                          payload.ssid!,
+                          Icons.public,
+                          'Transit',
+                          'Online Cloud Beam',
                         ),
-                      ],
-                      if (payload.password != null) ...[
+                      ] else ...[
+                        if (payload.ssid != null) ...[
+                          const Divider(color: Colors.white12, height: 16),
+                          _buildMetaRow(
+                            Icons.wifi,
+                            'Wi-Fi Hotspot',
+                            payload.ssid!,
+                          ),
+                        ],
+                        if (payload.password != null) ...[
+                          const Divider(color: Colors.white12, height: 16),
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.lock_outline,
+                                color: Colors.cyanAccent,
+                                size: 18,
+                              ),
+                              const SizedBox(width: 10),
+                              const Text(
+                                'Password',
+                                style: TextStyle(
+                                  color: Colors.white60,
+                                  fontSize: 13,
+                                ),
+                              ),
+                              const Spacer(),
+                              Flexible(
+                                child: Text(
+                                  payload.password!,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 13,
+                                    fontFamily: 'monospace',
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              InkWell(
+                                onTap: () {
+                                  Clipboard.setData(
+                                    ClipboardData(text: payload.password!),
+                                  );
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Password copied'),
+                                      behavior: SnackBarBehavior.floating,
+                                      duration: Duration(seconds: 1),
+                                    ),
+                                  );
+                                },
+                                child: const Icon(
+                                  Icons.copy,
+                                  color: Colors.cyanAccent,
+                                  size: 14,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                         const Divider(color: Colors.white12, height: 16),
                         Row(
                           children: [
-                            const Icon(
-                              Icons.lock_outline,
-                              color: Colors.cyanAccent,
-                              size: 18,
-                            ),
-                            const SizedBox(width: 10),
-                            const Text(
-                              'Password',
-                              style: TextStyle(
-                                color: Colors.white60,
-                                fontSize: 13,
+                            Expanded(
+                              child: _buildMetaRow(
+                                Icons.lan_outlined,
+                                'Stream IP',
+                                '${payload.ip}:${payload.port}',
                               ),
                             ),
-                            const Spacer(),
-                            Flexible(
-                              child: Text(
-                                payload.password!,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 13,
-                                  fontFamily: 'monospace',
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
+                            const SizedBox(width: 6),
                             InkWell(
                               onTap: () {
-                                Clipboard.setData(
-                                  ClipboardData(text: payload.password!),
-                                );
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Password copied'),
-                                    behavior: SnackBarBehavior.floating,
-                                    duration: Duration(seconds: 1),
-                                  ),
-                                );
+                                Navigator.of(ctx).pop();
+                                _showEditIpDialog(payload);
                               },
-                              child: const Icon(
-                                Icons.copy,
-                                color: Colors.cyanAccent,
-                                size: 14,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.cyanAccent.withValues(
+                                    alpha: 0.15,
+                                  ),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.edit,
+                                      color: Colors.cyanAccent,
+                                      size: 11,
+                                    ),
+                                    SizedBox(width: 2),
+                                    Text(
+                                      'Edit',
+                                      style: TextStyle(
+                                        color: Colors.cyanAccent,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                           ],
                         ),
                       ],
-                      const Divider(color: Colors.white12, height: 16),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _buildMetaRow(
-                              Icons.lan_outlined,
-                              'Stream IP',
-                              '${payload.ip}:${payload.port}',
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          InkWell(
-                            onTap: () {
-                              Navigator.of(ctx).pop();
-                              _showEditIpDialog(payload);
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 6,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.cyanAccent.withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: const Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    Icons.edit,
-                                    color: Colors.cyanAccent,
-                                    size: 11,
-                                  ),
-                                  SizedBox(width: 2),
-                                  Text(
-                                    'Edit',
-                                    style: TextStyle(
-                                      color: Colors.cyanAccent,
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
                     ],
                   ),
                 ),
-                if (Platform.isIOS && payload.ssid != null) ...[
+                if (payload.isOnline) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.purpleAccent.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: Colors.purpleAccent.withValues(alpha: 0.3),
+                      ),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(
+                          Icons.public,
+                          color: Colors.purpleAccent,
+                          size: 20,
+                        ),
+                        SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Online Cloud Stream',
+                                style: TextStyle(
+                                  color: Colors.purpleAccent,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                ),
+                              ),
+                              Text(
+                                'Works across cellular 4G/5G and different Wi-Fi networks worldwide.',
+                                style: TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ] else if (Platform.isIOS && payload.ssid != null) ...[
                   const SizedBox(height: 12),
                   Container(
                     padding: const EdgeInsets.all(12),
@@ -460,6 +515,11 @@ class _ReceiverScreenState extends State<ReceiverScreen>
         ),
         actions: [
           if (_scannedPayload == null && !_isDownloading) ...[
+            IconButton(
+              icon: const Icon(Icons.link_rounded, color: Colors.cyanAccent),
+              tooltip: 'Paste Download Link',
+              onPressed: _showPasteLinkDialog,
+            ),
             IconButton(
               icon: const Icon(Icons.flash_on_rounded, color: Colors.white),
               onPressed: () => _scannerController.toggleTorch(),
@@ -1070,7 +1130,10 @@ class _ReceiverScreenState extends State<ReceiverScreen>
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: Colors.white54),
+            ),
           ),
           ElevatedButton(
             onPressed: () {
@@ -1092,6 +1155,99 @@ class _ReceiverScreenState extends State<ReceiverScreen>
               foregroundColor: Colors.white,
             ),
             child: const Text('Connect'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showPasteLinkDialog() async {
+    final clipboardData = await Clipboard.getData(Clipboard.kTextPlain);
+    final clipboardText = clipboardData?.text?.trim() ?? '';
+    final controller = TextEditingController(
+      text: clipboardText.startsWith('http') ? clipboardText : '',
+    );
+
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF161B22),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: const Row(
+          children: [
+            Icon(Icons.link_rounded, color: Colors.cyanAccent),
+            SizedBox(width: 8),
+            Text(
+              'Paste Beam Link',
+              style: TextStyle(color: Colors.white, fontSize: 18),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Enter direct download link or BeamQR payload:',
+              style: TextStyle(color: Colors.white70, fontSize: 12),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              style: const TextStyle(color: Colors.white, fontSize: 13),
+              decoration: InputDecoration(
+                hintText: 'https://...',
+                hintStyle: const TextStyle(color: Colors.white30),
+                filled: true,
+                fillColor: const Color(0xFF21262D),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: Colors.white54),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final raw = controller.text.trim();
+              Navigator.of(ctx).pop();
+              if (raw.isNotEmpty) {
+                try {
+                  final payload = BeamPayload.fromJsonString(raw);
+                  setState(() {
+                    _scannedPayload = payload;
+                    _errorMessage = null;
+                  });
+                  _showTransferConfirmationDialog(payload);
+                } catch (e) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Invalid link or QR payload: $e'),
+                      backgroundColor: Colors.redAccent.shade700,
+                    ),
+                  );
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.cyanAccent.shade700,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Beam In'),
           ),
         ],
       ),

@@ -33,6 +33,12 @@ class BeamPayload {
   /// Protocol version for forward compatibility
   final int version;
 
+  /// Public HTTPS URL if hosted via online cloud relay
+  final String? onlineUrl;
+
+  /// Whether this transfer is hosted online across public networks
+  final bool isOnline;
+
   const BeamPayload({
     this.ssid,
     this.password,
@@ -44,12 +50,36 @@ class BeamPayload {
     this.mimeType = 'video/mp4',
     required this.token,
     this.version = 1,
+    this.onlineUrl,
+    this.isOnline = false,
   });
+
+  /// Convenience constructor for online cloud transfers
+  factory BeamPayload.online({
+    required String onlineUrl,
+    required String fileName,
+    required int fileSize,
+    String mimeType = 'video/mp4',
+  }) {
+    final uri = Uri.parse(onlineUrl);
+    return BeamPayload(
+      ip: uri.host,
+      port: uri.port != 0 ? uri.port : 443,
+      fileName: fileName,
+      fileSize: fileSize,
+      mimeType: mimeType,
+      token: '',
+      onlineUrl: onlineUrl,
+      isOnline: true,
+    );
+  }
 
   /// Serializes this payload into a JSON-compatible Map
   Map<String, dynamic> toJson() {
     return {
       'v': version,
+      if (isOnline) 'online': true,
+      if (onlineUrl != null) 'url': onlineUrl,
       if (ssid != null) 'ssid': ssid,
       if (password != null) 'pwd': password,
       'ip': ip,
@@ -67,11 +97,14 @@ class BeamPayload {
 
   /// Constructs a [BeamPayload] from a JSON map
   factory BeamPayload.fromJson(Map<String, dynamic> json) {
-    if (json['ip'] == null || json['port'] == null || json['name'] == null) {
-      throw const FormatException('Invalid BeamQR payload: missing required fields');
+    if (json['name'] == null) {
+      throw const FormatException('Invalid BeamQR payload: missing name field');
     }
 
-    final primaryIp = json['ip'] as String;
+    final isOnline = json['online'] as bool? ?? (json['url'] != null);
+    final onlineUrl = json['url'] as String?;
+
+    final primaryIp = json['ip'] as String? ?? (onlineUrl != null ? Uri.parse(onlineUrl).host : '');
     final ipsList = <String>[];
     if (json['ips'] is List) {
       for (final item in json['ips']) {
@@ -80,7 +113,7 @@ class BeamPayload {
         }
       }
     }
-    if (!ipsList.contains(primaryIp)) {
+    if (primaryIp.isNotEmpty && !ipsList.contains(primaryIp)) {
       ipsList.insert(0, primaryIp);
     }
 
@@ -90,17 +123,31 @@ class BeamPayload {
       password: json['pwd'] as String?,
       ip: primaryIp,
       candidateIps: ipsList,
-      port: (json['port'] as num).toInt(),
+      port: (json['port'] as num?)?.toInt() ?? 443,
       fileName: json['name'] as String,
       fileSize: (json['size'] as num?)?.toInt() ?? 0,
       mimeType: json['mime'] as String? ?? 'video/mp4',
       token: json['token'] as String? ?? '',
+      onlineUrl: onlineUrl,
+      isOnline: isOnline,
     );
   }
 
-  /// Parses a raw string (e.g. from QR scanner) into a [BeamPayload]
+  /// Parses a raw string (e.g. from QR scanner or direct link) into a [BeamPayload]
   factory BeamPayload.fromJsonString(String raw) {
-    final dynamic decoded = jsonDecode(raw.trim());
+    final trimmed = raw.trim();
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      // Direct online download link was scanned or pasted
+      final uri = Uri.parse(trimmed);
+      final fileName = uri.pathSegments.isNotEmpty ? uri.pathSegments.last : 'downloaded_video.mp4';
+      return BeamPayload.online(
+        onlineUrl: trimmed,
+        fileName: fileName,
+        fileSize: 0,
+      );
+    }
+
+    final dynamic decoded = jsonDecode(trimmed);
     if (decoded is! Map<String, dynamic>) {
       throw const FormatException('QR payload must be a valid JSON object');
     }
@@ -109,6 +156,7 @@ class BeamPayload {
 
   /// Formatted file size string (e.g., "14.2 MB", "1.2 GB")
   String get formattedSize {
+    if (fileSize <= 0) return 'Unknown Size';
     if (fileSize < 1024) return '$fileSize B';
     if (fileSize < 1024 * 1024) {
       return '${(fileSize / 1024).toStringAsFixed(1)} KB';
@@ -120,10 +168,16 @@ class BeamPayload {
   }
 
   /// The HTTP download URL to fetch the video stream from
-  String get downloadUrl => 'http://$ip:$port/stream?token=$token';
+  String get downloadUrl =>
+      (isOnline && onlineUrl != null && onlineUrl!.isNotEmpty)
+          ? onlineUrl!
+          : 'http://$ip:$port/stream?token=$token';
 
   /// The HTTP info URL to verify file metadata
-  String get infoUrl => 'http://$ip:$port/info?token=$token';
+  String get infoUrl =>
+      (isOnline && onlineUrl != null && onlineUrl!.isNotEmpty)
+          ? onlineUrl!
+          : 'http://$ip:$port/info?token=$token';
 
   @override
   String toString() =>
