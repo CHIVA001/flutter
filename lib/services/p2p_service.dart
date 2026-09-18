@@ -605,15 +605,9 @@ class P2pService {
     }
 
     // 2. Prepare target local storage directory
-    final appDir = await getApplicationDocumentsDirectory();
-    final beamVideosDir = Directory(p.join(appDir.path, 'beam_videos'));
-    if (!await beamVideosDir.exists()) {
-      await beamVideosDir.create(recursive: true);
-    }
-
-    // Clean destination file name (prevent collisions)
+    final targetDir = await _getReceiverStorageDirectory();
     final safeFileName = _sanitizeFileName(payload.fileName);
-    final targetFile = File(p.join(beamVideosDir.path, safeFileName));
+    final targetFile = File(p.join(targetDir.path, safeFileName));
     if (await targetFile.exists()) {
       await targetFile.delete();
     }
@@ -874,6 +868,43 @@ class P2pService {
       cleaned = '$cleaned.mp4';
     }
     return cleaned;
+  }
+
+  /// Resolves the optimal, accessible storage directory for downloaded files.
+  /// On Android, saves to the public Download/BeamQR directory (visible in Files & Gallery).
+  /// On iOS, saves to app Documents/BeamQR (visible in iOS Files app).
+  Future<Directory> _getReceiverStorageDirectory() async {
+    if (Platform.isAndroid) {
+      try {
+        final publicDownloadDir = Directory('/storage/emulated/0/Download/BeamQR');
+        if (!await publicDownloadDir.exists()) {
+          await publicDownloadDir.create(recursive: true);
+        }
+        return publicDownloadDir;
+      } catch (e) {
+        debugPrint('Could not create public Download/BeamQR folder: $e');
+      }
+
+      try {
+        final extDir = await getExternalStorageDirectory();
+        if (extDir != null) {
+          final beamDir = Directory(p.join(extDir.path, 'BeamQR'));
+          if (!await beamDir.exists()) {
+            await beamDir.create(recursive: true);
+          }
+          return beamDir;
+        }
+      } catch (e) {
+        debugPrint('Could not access external storage: $e');
+      }
+    }
+
+    final appDir = await getApplicationDocumentsDirectory();
+    final beamDir = Directory(p.join(appDir.path, 'BeamQR'));
+    if (!await beamDir.exists()) {
+      await beamDir.create(recursive: true);
+    }
+    return beamDir;
   }
 
   /// Total service disposal

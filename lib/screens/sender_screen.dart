@@ -1049,12 +1049,18 @@ class _SenderScreenState extends State<SenderScreen> {
             decoration: BoxDecoration(
               color: Colors.teal.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.tealAccent.withValues(alpha: 0.3)),
+              border: Border.all(
+                color: Colors.tealAccent.withValues(alpha: 0.3),
+              ),
             ),
             child: const Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.check_circle_outline, color: Colors.tealAccent, size: 16),
+                Icon(
+                  Icons.check_circle_outline,
+                  color: Colors.tealAccent,
+                  size: 16,
+                ),
                 SizedBox(width: 8),
                 Expanded(
                   child: Column(
@@ -1112,7 +1118,10 @@ class _SenderScreenState extends State<SenderScreen> {
                           SizedBox(height: 2),
                           Text(
                             'Real phones cannot reach 10.0.2.x directly.\nSwitch to your PC Wi-Fi IP so phones can connect:',
-                            style: TextStyle(color: Colors.white70, fontSize: 11),
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 11,
+                            ),
                           ),
                         ],
                       ),

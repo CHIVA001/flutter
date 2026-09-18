@@ -838,29 +838,81 @@ class _ReceiverScreenState extends State<ReceiverScreen>
                 ),
               ),
               const SizedBox(height: 8),
-              const Text(
-                'Video saved to device offline storage',
-                style: TextStyle(color: Colors.white60, fontSize: 13),
+              Text(
+                Platform.isAndroid
+                    ? 'Saved to device storage (Downloads / BeamQR)'
+                    : 'Saved to Files app (On My iPhone > BeamQR)',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.greenAccent,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 14),
+              if (_downloadedFile != null &&
+                  (_downloadedFile!.path.toLowerCase().endsWith('.jpg') ||
+                      _downloadedFile!.path.toLowerCase().endsWith('.jpeg') ||
+                      _downloadedFile!.path.toLowerCase().endsWith('.png') ||
+                      _downloadedFile!.path.toLowerCase().endsWith('.webp') ||
+                      _downloadedFile!.path.toLowerCase().endsWith('.gif'))) ...[
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    constraints: const BoxConstraints(maxHeight: 180),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.white24),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Image.file(
+                      _downloadedFile!,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+              ],
               Container(
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 decoration: BoxDecoration(
                   color: const Color(0xFF21262D),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Text(
-                  _downloadedFile?.path ?? '',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 11,
-                    fontFamily: 'monospace',
-                  ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.folder_outlined, color: Colors.cyanAccent, size: 16),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _downloadedFile?.path ?? '',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 11,
+                          fontFamily: 'monospace',
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.copy, size: 16, color: Colors.cyanAccent),
+                      tooltip: 'Copy Path',
+                      onPressed: () {
+                        if (_downloadedFile != null) {
+                          Clipboard.setData(ClipboardData(text: _downloadedFile!.path));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('File path copied to clipboard'),
+                              duration: Duration(seconds: 2),
+                            ),
+                          );
+                        }
+                      },
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 20),
               ElevatedButton.icon(
                 onPressed: _resetScanner,
                 style: ElevatedButton.styleFrom(
