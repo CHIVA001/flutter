@@ -647,46 +647,33 @@ class _ReceiverScreenState extends State<ReceiverScreen>
                 clipBehavior: Clip.antiAlias,
                 minScale: 0.8,
                 maxScale: 4.0,
-                child: imageBytes != null
-                    ? Image.memory(
-                        imageBytes,
-                        fit: BoxFit.contain,
-                        errorBuilder: (context, error, stackTrace) =>
-                            const Center(
-                              child: Icon(
-                                Icons.broken_image,
-                                color: Colors.white38,
-                                size: 48,
-                              ),
-                            ),
-                      )
-                    : (imageUrl != null
-                          ? Image.network(
-                              imageUrl,
-                              fit: BoxFit.contain,
-                              loadingBuilder: (ctx, child, progress) {
-                                if (progress == null) return child;
-                                return const Center(
-                                  child: CircularProgressIndicator(
-                                    color: Colors.cyanAccent,
-                                  ),
-                                );
-                              },
-                              errorBuilder: (context, error, stackTrace) =>
-                                  const Center(
-                                    child: Icon(
-                                      Icons.broken_image,
-                                      color: Colors.white38,
-                                      size: 48,
-                                    ),
-                                  ),
-                            )
-                          : const Center(
-                              child: Icon(
-                                Icons.image_not_supported,
-                                color: Colors.white38,
-                              ),
-                            )),
+                child: Image.network(
+                  payload.previewUrl,
+                  fit: BoxFit.contain,
+                  loadingBuilder: (ctx, child, progress) {
+                    if (progress == null) return child;
+                    if (imageBytes != null) {
+                      return Image.memory(imageBytes, fit: BoxFit.contain);
+                    }
+                    return const Center(
+                      child: CircularProgressIndicator(
+                        color: Colors.cyanAccent,
+                      ),
+                    );
+                  },
+                  errorBuilder: (context, error, stackTrace) {
+                    if (imageBytes != null) {
+                      return Image.memory(imageBytes, fit: BoxFit.contain);
+                    }
+                    return const Center(
+                      child: Icon(
+                        Icons.broken_image,
+                        color: Colors.white38,
+                        size: 48,
+                      ),
+                    );
+                  },
+                ),
               ),
             ),
           ),
@@ -1123,15 +1110,13 @@ class _ReceiverScreenState extends State<ReceiverScreen>
                 ),
               ),
               const SizedBox(height: 6),
-              Text(
-                Platform.isAndroid
-                    ? 'Saved to device storage (Downloads / BeamQR)'
-                    : 'Saved to Files app (On My iPhone > BeamQR)',
+              const Text(
+                'Saved to Photos & Gallery (BeamQR Album)',
                 textAlign: TextAlign.center,
-                style: const TextStyle(
+                style: TextStyle(
                   color: Colors.greenAccent,
                   fontSize: 13,
-                  fontWeight: FontWeight.w500,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
               const SizedBox(height: 14),

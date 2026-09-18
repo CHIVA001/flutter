@@ -6,6 +6,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_p2p_connection/flutter_p2p_connection.dart';
+import 'package:gal/gal.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -181,7 +182,8 @@ class P2pService {
     // If only emulator NAT addresses are present (10.0.2.x), automatically include
     // the host PC's Wi-Fi LAN IP (192.168.100.192) so physical phones on the same Wi-Fi
     // can connect seamlessly via 'adb forward tcp:8888 tcp:8888'.
-    if (validIps.isNotEmpty && validIps.every((ip) => ip.startsWith('10.0.2.'))) {
+    if (validIps.isNotEmpty &&
+        validIps.every((ip) => ip.startsWith('10.0.2.'))) {
       validIps.insert(0, '192.168.100.192');
     }
 
@@ -301,7 +303,8 @@ class P2pService {
         '----WebKitFormBoundary${DateTime.now().millisecondsSinceEpoch}';
     final uploadUri = Uri.parse('https://uguu.se/upload');
 
-    final client = HttpClient()..connectionTimeout = const Duration(seconds: 40);
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 40);
 
     try {
       final header = utf8.encode(
@@ -444,6 +447,23 @@ class P2pService {
             ..statusCode = HttpStatus.ok
             ..write(jsonEncode(meta))
             ..close();
+          return;
+        }
+
+        // Endpoint: /preview
+        if (path == '/preview') {
+          final file = _currentlyHostedFile;
+          if (file == null || !await file.exists()) {
+            request.response
+              ..statusCode = HttpStatus.notFound
+              ..close();
+            return;
+          }
+          final mimeType = _detectMimeType(file.path);
+          request.response
+            ..headers.contentType = ContentType.parse(mimeType)
+            ..statusCode = HttpStatus.ok;
+          await file.openRead().pipe(request.response);
           return;
         }
 
@@ -733,6 +753,9 @@ class P2pService {
       await _activeFileSink!.close();
       _activeFileSink = null;
 
+      // Automatically save images and videos to system Photos/Gallery on iOS and Android
+      await _saveToDeviceGallery(targetFile);
+
       _receiverProgressController.add(
         TransferProgress.completed(
           totalBytes: transferredBytes,
@@ -883,7 +906,9 @@ class P2pService {
   Future<Directory> _getReceiverStorageDirectory() async {
     if (Platform.isAndroid) {
       try {
-        final publicDownloadDir = Directory('/storage/emulated/0/Download/BeamQR');
+        final publicDownloadDir = Directory(
+          '/storage/emulated/0/Download/BeamQR',
+        );
         if (!await publicDownloadDir.exists()) {
           await publicDownloadDir.create(recursive: true);
         }
@@ -917,7 +942,14 @@ class P2pService {
   /// Generates a compact base64 thumbnail string for image files using dart:ui
   static Future<String?> generateThumbnailBase64(File file) async {
     final ext = p.extension(file.path).toLowerCase();
-    final isImage = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp'].contains(ext);
+    final isImage = [
+      '.jpg',
+      '.jpeg',
+      '.png',
+      '.webp',
+      '.gif',
+      '.bmp',
+    ].contains(ext);
     if (!isImage) return null;
 
     try {
@@ -929,15 +961,15 @@ class P2pService {
 
       final codec = await ui.instantiateImageCodec(
         bytes,
-        targetWidth: 64,
-        targetHeight: 64,
+        targetWidth: 100,
+        targetHeight: 100,
       );
       final frame = await codec.getNextFrame();
       final byteData = await frame.image.toByteData(format: ui.ImageByteFormat.png);
       if (byteData != null) {
         final thumbBytes = byteData.buffer.asUint8List();
-        // Keep QR payload compact (under 3.5KB)
-        if (thumbBytes.length < 3500) {
+        // Keep QR payload compact
+        if (thumbBytes.length < 4200) {
           return base64Encode(thumbBytes);
         }
       }
@@ -945,6 +977,40 @@ class P2pService {
       debugPrint('Note: Thumbnail generation skipped ($e)');
     }
     return null;
+  }
+
+  /// Automatically exports downloaded photos & videos directly into the device's
+  /// native Photos / Gallery app on both iOS and Android.
+  Future<bool> _saveToDeviceGallery(File file) async {
+    final ext = p.extension(file.path).toLowerCase();
+    final isImage = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp'].contains(ext);
+    final isVideo = ['.mp4', '.mov', '.mkv', '.avi', '.webm'].contains(ext);
+
+    if (!isImage && !isVideo) return false;
+
+    try {
+      final hasAccess = await Gal.hasAccess();
+      if (!hasAccess) {
+        final granted = await Gal.requestAccess();
+        if (!granted) {
+          debugPrint('Gallery permission not granted');
+          return false;
+        }
+      }
+
+      if (isImage) {
+        await Gal.putImage(file.path, album: 'BeamQR');
+        debugPrint('Image saved to Photos Gallery (BeamQR album)');
+        return true;
+      } else if (isVideo) {
+        await Gal.putVideo(file.path, album: 'BeamQR');
+        debugPrint('Video saved to Photos Gallery (BeamQR album)');
+        return true;
+      }
+    } catch (e) {
+      debugPrint('Gal save to gallery note: $e');
+    }
+    return false;
   }
 
   /// Total service disposal

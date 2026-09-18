@@ -188,6 +188,12 @@ class BeamPayload {
           ? onlineUrl!
           : 'http://$ip:$port/info?token=$token';
 
+  /// The HTTP preview URL to stream the original full-resolution image/media
+  String get previewUrl =>
+      (isOnline && onlineUrl != null && onlineUrl!.isNotEmpty)
+          ? onlineUrl!
+          : 'http://$ip:$port/preview?token=$token';
+
   @override
   String toString() =>
       'BeamPayload(ip: $ip, port: $port, fileName: $fileName, size: $formattedSize)';
