@@ -219,21 +219,32 @@ class P2pService {
       validIps.insert(0, primaryIp);
     }
 
-    // 3. Start local HTTP streaming server bound to all IPv4 interfaces
-    try {
-      _httpServer = await HttpServer.bind(
-        InternetAddress.anyIPv4,
-        port,
-        shared: true,
-      );
-    } catch (_) {
-      // In case port 8888 is occupied, bind to an ephemeral open port
-      _httpServer = await HttpServer.bind(
-        InternetAddress.anyIPv4,
-        0,
-        shared: true,
-      );
+    // 3. Start local HTTP streaming server bound to all IPv4 interfaces.
+    // Retry binding the preferred port a few times to handle brief post-stopHosting
+    // delays (e.g. port not yet released by the OS). Fall back to ephemeral only
+    // after exhausting retries — an ephemeral port breaks adb forward tunnels.
+    HttpServer? boundServer;
+    for (int attempt = 0; attempt < 3; attempt++) {
+      try {
+        boundServer = await HttpServer.bind(
+          InternetAddress.anyIPv4,
+          port,
+          shared: true,
+        );
+        break; // success
+      } catch (_) {
+        if (attempt < 2) {
+          await Future<void>.delayed(const Duration(milliseconds: 350));
+        }
+      }
     }
+    // Last resort: ephemeral port (adb forward won't work but LAN may still work)
+    boundServer ??= await HttpServer.bind(
+      InternetAddress.anyIPv4,
+      0,
+      shared: true,
+    );
+    _httpServer = boundServer;
 
     final boundPort = _httpServer!.port;
     final fileSize = await videoFile.length();
@@ -964,7 +975,9 @@ class P2pService {
         targetHeight: 100,
       );
       final frame = await codec.getNextFrame();
-      final byteData = await frame.image.toByteData(format: ui.ImageByteFormat.png);
+      final byteData = await frame.image.toByteData(
+        format: ui.ImageByteFormat.png,
+      );
       if (byteData != null) {
         final thumbBytes = byteData.buffer.asUint8List();
         // Keep QR payload compact
@@ -988,10 +1001,15 @@ class P2pService {
     // Auto-unzip multi-file beams
     if (ext == '.zip') return _unzipAndSaveAll(file);
 
-    final isImage =
-        ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp'].contains(ext);
-    final isVideo =
-        ['.mp4', '.mov', '.mkv', '.avi', '.webm'].contains(ext);
+    final isImage = [
+      '.jpg',
+      '.jpeg',
+      '.png',
+      '.webp',
+      '.gif',
+      '.bmp',
+    ].contains(ext);
+    final isVideo = ['.mp4', '.mov', '.mkv', '.avi', '.webm'].contains(ext);
 
     if (!isImage && !isVideo) return false;
 
@@ -1044,11 +1062,13 @@ class P2pService {
         debugPrint('Extracted: $entryName');
 
         if (await _saveToDeviceGallery(outFile)) saved++;
-      await outFile.delete().catchError((_) => outFile);
+        await outFile.delete().catchError((_) => outFile);
       }
 
       await extractDir.delete(recursive: true).catchError((_) => extractDir);
-      debugPrint('ZIP: saved $saved / ${archive.files.length} files to gallery');
+      debugPrint(
+        'ZIP: saved $saved / ${archive.files.length} files to gallery',
+      );
       return saved > 0;
     } catch (e) {
       debugPrint('ZIP unzip error: $e');
@@ -1061,6 +1081,8 @@ class P2pService {
   Future<BeamPayload> zipAndHost(
     List<File> files, {
     int port = 8888,
+    bool enableWifiDirect = true,
+    String? overrideHostIp,
   }) async {
     final tmpDir = await getTemporaryDirectory();
     final ts = DateTime.now().millisecondsSinceEpoch;
@@ -1078,7 +1100,12 @@ class P2pService {
     }
     encoder.closeSync();
 
-    return startHosting(File(zipPath), port: port);
+    return startHosting(
+      File(zipPath),
+      port: port,
+      enableWifiDirect: enableWifiDirect,
+      overrideHostIp: overrideHostIp,
+    );
   }
 
   /// Total service disposal
