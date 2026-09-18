@@ -1087,10 +1087,10 @@ class _ReceiverScreenState extends State<ReceiverScreen>
 
   Widget _buildSuccessView() {
     return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(28),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
         child: Container(
-          padding: const EdgeInsets.all(26),
+          padding: const EdgeInsets.all(22),
           decoration: BoxDecoration(
             color: const Color(0xFF161B22),
             borderRadius: BorderRadius.circular(24),
@@ -1102,7 +1102,7 @@ class _ReceiverScreenState extends State<ReceiverScreen>
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                padding: const EdgeInsets.all(18),
+                padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
                   color: Colors.greenAccent.withValues(alpha: 0.15),
                   shape: BoxShape.circle,
@@ -1110,10 +1110,10 @@ class _ReceiverScreenState extends State<ReceiverScreen>
                 child: const Icon(
                   Icons.download_done_rounded,
                   color: Colors.greenAccent,
-                  size: 56,
+                  size: 48,
                 ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
               const Text(
                 'Transfer Complete!',
                 style: TextStyle(
@@ -1122,7 +1122,7 @@ class _ReceiverScreenState extends State<ReceiverScreen>
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
               Text(
                 Platform.isAndroid
                     ? 'Saved to device storage (Downloads / BeamQR)'
@@ -1146,7 +1146,7 @@ class _ReceiverScreenState extends State<ReceiverScreen>
                 ClipRRect(
                   borderRadius: BorderRadius.circular(12),
                   child: Container(
-                    constraints: const BoxConstraints(maxHeight: 180),
+                    constraints: const BoxConstraints(maxHeight: 140),
                     decoration: BoxDecoration(
                       border: Border.all(color: Colors.white24),
                       borderRadius: BorderRadius.circular(12),
