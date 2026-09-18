@@ -1063,6 +1063,79 @@ class _SenderScreenState extends State<SenderScreen> {
     return Colors.cyanAccent;
   }
 
+  bool _isImageFile(String? name) {
+    if (name == null) return false;
+    final ext = p.extension(name).toLowerCase();
+    return ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.heic'].contains(ext);
+  }
+
+  void _previewFile(File file, String? name) {
+    final isImg = _isImageFile(name);
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: const Color(0xFF161B22),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      name ?? 'Preview',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white70),
+                    onPressed: () => Navigator.of(ctx).pop(),
+                  ),
+                ],
+              ),
+            ),
+            if (isImg)
+              Flexible(
+                child: InteractiveViewer(
+                  maxScale: 4.0,
+                  child: Image.file(file, fit: BoxFit.contain),
+                ),
+              )
+            else
+              Padding(
+                padding: const EdgeInsets.all(32),
+                child: Column(
+                  children: [
+                    Icon(
+                      _getFileIcon(name),
+                      color: _getFileColor(name),
+                      size: 64,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      name ?? '',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.white70),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildVideoSelectionCard() {
     return Container(
       padding: const EdgeInsets.all(20),
@@ -2246,292 +2319,5 @@ class _SenderScreenState extends State<SenderScreen> {
       return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
     }
     return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Multi-Select Gallery Sheet
-// ---------------------------------------------------------------------------
-
-/// Full-screen bottom sheet that lets the user pick one or more photos/videos.
-/// Returns a [List<AssetEntity>] on confirm, or null if cancelled.
-class _MultiSelectGallerySheet extends StatefulWidget {
-  const _MultiSelectGallerySheet({required this.assets});
-
-  final List<AssetEntity> assets;
-
-  @override
-  State<_MultiSelectGallerySheet> createState() =>
-      _MultiSelectGallerySheetState();
-}
-
-class _MultiSelectGallerySheetState extends State<_MultiSelectGallerySheet> {
-  // Ordered list of selected assets (preserves selection order)
-  final List<AssetEntity> _selected = [];
-
-  int _selectionIndex(AssetEntity asset) {
-    final idx = _selected.indexWhere((a) => a.id == asset.id);
-    return idx == -1 ? -1 : idx + 1; // 1-based
-  }
-
-  void _toggle(AssetEntity asset) {
-    setState(() {
-      final idx = _selected.indexWhere((a) => a.id == asset.id);
-      if (idx == -1) {
-        _selected.add(asset);
-      } else {
-        _selected.removeAt(idx);
-      }
-    });
-  }
-
-  String _formatBytes(int bytes) {
-    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(0)} KB';
-    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return DraggableScrollableSheet(
-      initialChildSize: 0.92,
-      maxChildSize: 0.96,
-      minChildSize: 0.5,
-      expand: false,
-      builder: (ctx, scrollCtrl) => Column(
-        children: [
-          // Drag handle
-          Container(
-            margin: const EdgeInsets.only(top: 10, bottom: 4),
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: Colors.white24,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-          // Header
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 6, 8, 10),
-            child: Row(
-              children: [
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Select Photos & Videos',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
-                      ),
-                      SizedBox(height: 2),
-                      Text(
-                        'Tap to select • tap again to deselect',
-                        style: TextStyle(color: Colors.white38, fontSize: 12),
-                      ),
-                    ],
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.close_rounded, color: Colors.white54),
-                  onPressed: () => Navigator.of(ctx).pop(),
-                ),
-              ],
-            ),
-          ),
-          const Divider(color: Colors.white12, height: 1),
-          // Grid
-          Expanded(
-            child: GridView.builder(
-              controller: scrollCtrl,
-              padding: const EdgeInsets.fromLTRB(3, 3, 3, 100),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3,
-                crossAxisSpacing: 2,
-                mainAxisSpacing: 2,
-              ),
-              itemCount: widget.assets.length,
-              itemBuilder: (ctx, i) {
-                final asset = widget.assets[i];
-                final selIdx = _selectionIndex(asset);
-                final isSel = selIdx != -1;
-
-                return ClipRRect(
-                  borderRadius: BorderRadius.circular(3),
-                  child: Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      onTap: () => _toggle(asset),
-                      child: Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          // Thumbnail
-                          FutureBuilder<Uint8List?>(
-                            future: asset.thumbnailDataWithSize(
-                              const ThumbnailSize(200, 200),
-                            ),
-                            builder: (_, snap) {
-                              if (snap.hasData && snap.data != null) {
-                                return Image.memory(
-                                  snap.data!,
-                                  fit: BoxFit.cover,
-                                );
-                              }
-                              return Container(
-                                color: const Color(0xFF21262D),
-                                child: const Center(
-                                  child: SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Colors.white24,
-                                    ),
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                          // Dark overlay when selected
-                          if (isSel)
-                            Container(
-                              color: Colors.black.withValues(alpha: 0.35),
-                            ),
-                          // Video duration badge
-                          if (asset.type == AssetType.video)
-                            Positioned(
-                              bottom: 4,
-                              left: 4,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 4,
-                                  vertical: 1,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Colors.black54,
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(
-                                      Icons.videocam_rounded,
-                                      color: Colors.white,
-                                      size: 9,
-                                    ),
-                                    const SizedBox(width: 2),
-                                    Text(
-                                      '${asset.duration}s',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 9,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          // Selection circle (top-right)
-                          Positioned(
-                            top: 5,
-                            right: 5,
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 150),
-                              width: 22,
-                              height: 22,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: isSel
-                                    ? Colors.indigoAccent
-                                    : Colors.transparent,
-                                border: Border.all(
-                                  color: isSel
-                                      ? Colors.indigoAccent
-                                      : Colors.white70,
-                                  width: 2,
-                                ),
-                              ),
-                              child: isSel
-                                  ? Center(
-                                      child: Text(
-                                        '$selIdx',
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    )
-                                  : null,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-          // Bottom action bar
-          AnimatedSlide(
-            duration: const Duration(milliseconds: 200),
-            offset: _selected.isEmpty ? const Offset(0, 1) : Offset.zero,
-            child: AnimatedOpacity(
-              duration: const Duration(milliseconds: 200),
-              opacity: _selected.isEmpty ? 0 : 1,
-              child: SafeArea(
-                child: Container(
-                  margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                  child: ElevatedButton(
-                    onPressed: _selected.isEmpty
-                        ? null
-                        : () =>
-                              Navigator.of(context)
-                                  .pop(List<AssetEntity>.from(_selected)),
-                    style: ElevatedButton.styleFrom(
-                      minimumSize: const Size(double.infinity, 52),
-                      backgroundColor: Colors.indigoAccent,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.bolt_rounded, size: 20),
-                        const SizedBox(width: 8),
-                        Text(
-                          _selected.isEmpty
-                              ? 'Select files'
-                              : 'Beam ${_selected.length} file${_selected.length == 1 ? "" : "s"}',
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        if (_selected.isNotEmpty) ...[
-                          const SizedBox(width: 6),
-                          Text(
-                            '(${_formatBytes(_selected.fold<int>(0, (int sum, a) => sum + (a.size as int)))})',
-                            style: const TextStyle(
-                              fontSize: 13,
-                              color: Colors.white70,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }
