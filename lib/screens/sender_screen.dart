@@ -352,14 +352,25 @@ class _SenderScreenState extends State<SenderScreen> {
         end: scanCount,
       );
 
+      final pickedSize = _videoSize;
       for (final asset in recent) {
         if (!asset.isLivePhoto) continue;
         final assetBase = p
             .basenameWithoutExtension(asset.title ?? '')
             .toUpperCase();
-        if (assetBase.isNotEmpty && assetBase == baseName) {
+        if (assetBase.isNotEmpty &&
+            (assetBase == baseName ||
+                baseName.contains(assetBase) ||
+                assetBase.contains(baseName))) {
           if (mounted) setState(() => _livePhotoAsset = asset);
           return;
+        }
+        if (pickedSize != null && pickedSize > 0) {
+          final aFile = await asset.file;
+          if (aFile != null && (await aFile.length()) == pickedSize) {
+            if (mounted) setState(() => _livePhotoAsset = asset);
+            return;
+          }
         }
       }
     } catch (_) {
@@ -1281,45 +1292,50 @@ class _SenderScreenState extends State<SenderScreen> {
                     spacing: 6,
                     runSpacing: 6,
                     children: [
-                      ..._multiFileNames
-                          .take(8)
-                          .map(
-                            (name) => Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF30363D),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    _getFileIcon(name),
-                                    color: _getFileColor(name),
-                                    size: 12,
+                      ..._multiFiles.asMap().entries.take(8).map((entry) {
+                        final idx = entry.key;
+                        final file = entry.value;
+                        final name = _multiFileNames[idx];
+                        return InkWell(
+                          onTap: () => _previewFile(file, name),
+                          borderRadius: BorderRadius.circular(8),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF30363D),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  _getFileIcon(name),
+                                  color: _getFileColor(name),
+                                  size: 12,
+                                ),
+                                const SizedBox(width: 4),
+                                ConstrainedBox(
+                                  constraints: const BoxConstraints(
+                                    maxWidth: 120,
                                   ),
-                                  const SizedBox(width: 4),
-                                  ConstrainedBox(
-                                    constraints: const BoxConstraints(
-                                      maxWidth: 120,
-                                    ),
-                                    child: Text(
-                                      name,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        color: Colors.white70,
-                                        fontSize: 11,
-                                      ),
+                                  child: Text(
+                                    name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 11,
                                     ),
                                   ),
-                                ],
-                              ),
+                                ),
+                              ],
                             ),
                           ),
+                        );
+                      }),
                       if (_multiFileNames.length > 8)
                         Container(
                           padding: const EdgeInsets.symmetric(
@@ -1356,81 +1372,112 @@ class _SenderScreenState extends State<SenderScreen> {
                 children: [
                   Row(
                     children: [
-                      Icon(
-                        _getFileIcon(_videoName),
-                        color: _getFileColor(_videoName),
-                        size: 36,
+                      GestureDetector(
+                        onTap: () {
+                          if (_selectedVideo != null) {
+                            _previewFile(_selectedVideo!, _videoName);
+                          }
+                        },
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child:
+                              _isImageFile(_videoName) && _selectedVideo != null
+                              ? Image.file(
+                                  _selectedVideo!,
+                                  width: 40,
+                                  height: 40,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, _, _) => Icon(
+                                    _getFileIcon(_videoName),
+                                    color: _getFileColor(_videoName),
+                                    size: 36,
+                                  ),
+                                )
+                              : Icon(
+                                  _getFileIcon(_videoName),
+                                  color: _getFileColor(_videoName),
+                                  size: 36,
+                                ),
+                        ),
                       ),
                       const SizedBox(width: 14),
                       Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    _videoName ?? 'selected_file',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 14,
+                        child: InkWell(
+                          onTap: () {
+                            if (_selectedVideo != null) {
+                              _previewFile(_selectedVideo!, _videoName);
+                            }
+                          },
+                          borderRadius: BorderRadius.circular(8),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      _videoName ?? 'selected_file',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 14,
+                                      ),
                                     ),
                                   ),
-                                ),
-                                // LIVE badge — only shown when a Live Photo is detected
-                                if (_livePhotoAsset != null) ...[
-                                  const SizedBox(width: 6),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 6,
-                                      vertical: 2,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      gradient: const LinearGradient(
-                                        colors: [
-                                          Color(0xFF059669),
-                                          Color(0xFF10B981),
+                                  // LIVE badge — only shown when a Live Photo is detected
+                                  if (_livePhotoAsset != null) ...[
+                                    const SizedBox(width: 6),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 6,
+                                        vertical: 2,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        gradient: const LinearGradient(
+                                          colors: [
+                                            Color(0xFF059669),
+                                            Color(0xFF10B981),
+                                          ],
+                                        ),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: const Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            Icons.motion_photos_on_rounded,
+                                            color: Colors.white,
+                                            size: 10,
+                                          ),
+                                          SizedBox(width: 3),
+                                          Text(
+                                            'LIVE',
+                                            style: TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.bold,
+                                              letterSpacing: 0.5,
+                                            ),
+                                          ),
                                         ],
                                       ),
-                                      borderRadius: BorderRadius.circular(6),
                                     ),
-                                    child: const Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(
-                                          Icons.motion_photos_on_rounded,
-                                          color: Colors.white,
-                                          size: 10,
-                                        ),
-                                        SizedBox(width: 3),
-                                        Text(
-                                          'LIVE',
-                                          style: TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 10,
-                                            fontWeight: FontWeight.bold,
-                                            letterSpacing: 0.5,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
+                                  ],
                                 ],
-                              ],
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              _formatBytes(_videoSize ?? 0),
-                              style: TextStyle(
-                                color: _getFileColor(_videoName),
-                                fontSize: 13,
-                                fontWeight: FontWeight.w500,
                               ),
-                            ),
-                          ],
+                              const SizedBox(height: 4),
+                              Text(
+                                _formatBytes(_videoSize ?? 0),
+                                style: TextStyle(
+                                  color: _getFileColor(_videoName),
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                       if (_payload == null)
