@@ -1504,6 +1504,15 @@ class _SenderScreenState extends State<SenderScreen> {
                       if (_payload == null) ...[
                         IconButton(
                           icon: const Icon(
+                            Icons.add_circle_outline_rounded,
+                            color: Colors.indigoAccent,
+                            size: 22,
+                          ),
+                          onPressed: _showAddMoreBottomSheet,
+                          tooltip: 'Add more files',
+                        ),
+                        IconButton(
+                          icon: const Icon(
                             Icons.swap_horiz_rounded,
                             color: Colors.white70,
                             size: 22,
@@ -1601,6 +1610,43 @@ class _SenderScreenState extends State<SenderScreen> {
                             style: const TextStyle(
                               color: Colors.white38,
                               fontSize: 11,
+                            ),
+                          ),
+                        ),
+                      if (_payload == null)
+                        InkWell(
+                          onTap: _showAddMoreBottomSheet,
+                          borderRadius: BorderRadius.circular(8),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 5,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.indigoAccent.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: Colors.indigoAccent.withValues(alpha: 0.5),
+                              ),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.add_rounded,
+                                  color: Colors.indigoAccent,
+                                  size: 14,
+                                ),
+                                SizedBox(width: 4),
+                                Text(
+                                  'Add more',
+                                  style: TextStyle(
+                                    color: Colors.indigoAccent,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ),
@@ -1733,6 +1779,15 @@ class _SenderScreenState extends State<SenderScreen> {
                       if (_payload == null) ...[
                         IconButton(
                           icon: const Icon(
+                            Icons.add_circle_outline_rounded,
+                            color: Colors.indigoAccent,
+                            size: 22,
+                          ),
+                          onPressed: _showAddMoreBottomSheet,
+                          tooltip: 'Add more files',
+                        ),
+                        IconButton(
+                          icon: const Icon(
                             Icons.swap_horiz_rounded,
                             color: Colors.white70,
                             size: 22,
@@ -1752,6 +1807,41 @@ class _SenderScreenState extends State<SenderScreen> {
                       ],
                     ],
                   ),
+                  // "Add more files" button for single-file card
+                  if (_payload == null) ...[
+                    const SizedBox(height: 10),
+                    const Divider(color: Colors.white12, height: 1),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      child: TextButton.icon(
+                        onPressed: _showAddMoreBottomSheet,
+                        style: TextButton.styleFrom(
+                          backgroundColor: Colors.indigoAccent.withValues(alpha: 0.12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            side: BorderSide(
+                              color: Colors.indigoAccent.withValues(alpha: 0.4),
+                            ),
+                          ),
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                        ),
+                        icon: const Icon(
+                          Icons.add_circle_outline_rounded,
+                          color: Colors.indigoAccent,
+                          size: 16,
+                        ),
+                        label: const Text(
+                          'Add more files to beam',
+                          style: TextStyle(
+                            color: Colors.indigoAccent,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                   // “Use motion clip” button — only shown when Live Photo detected
                   if (_livePhotoAsset != null && _payload == null) ...[
                     const SizedBox(height: 10),
