@@ -165,10 +165,18 @@ class _SenderScreenState extends State<SenderScreen> {
     }
 
     if (existingFiles.length == 1) {
-      _onFileSelected(existingFiles.first, existingNames.first, currentTotal + addedSize);
+      _onFileSelected(
+        existingFiles.first,
+        existingNames.first,
+        currentTotal + addedSize,
+      );
       _detectLivePhoto(existingNames.first);
     } else {
-      _onMultiFilesSelected(existingFiles, existingNames, currentTotal + addedSize);
+      _onMultiFilesSelected(
+        existingFiles,
+        existingNames,
+        currentTotal + addedSize,
+      );
     }
   }
 
@@ -1298,7 +1306,15 @@ class _SenderScreenState extends State<SenderScreen> {
   bool _isVideoFile(String? name) {
     if (name == null) return false;
     final ext = p.extension(name).toLowerCase();
-    return ['.mp4', '.mov', '.mkv', '.avi', '.webm', '.3gp', '.m4v'].contains(ext);
+    return [
+      '.mp4',
+      '.mov',
+      '.mkv',
+      '.avi',
+      '.webm',
+      '.3gp',
+      '.m4v',
+    ].contains(ext);
   }
 
   void _previewFile(File file, String? name) {
@@ -1623,10 +1639,14 @@ class _SenderScreenState extends State<SenderScreen> {
                               vertical: 5,
                             ),
                             decoration: BoxDecoration(
-                              color: Colors.indigoAccent.withValues(alpha: 0.15),
+                              color: Colors.indigoAccent.withValues(
+                                alpha: 0.15,
+                              ),
                               borderRadius: BorderRadius.circular(8),
                               border: Border.all(
-                                color: Colors.indigoAccent.withValues(alpha: 0.5),
+                                color: Colors.indigoAccent.withValues(
+                                  alpha: 0.5,
+                                ),
                               ),
                             ),
                             child: const Row(
@@ -1817,7 +1837,9 @@ class _SenderScreenState extends State<SenderScreen> {
                       child: TextButton.icon(
                         onPressed: _showAddMoreBottomSheet,
                         style: TextButton.styleFrom(
-                          backgroundColor: Colors.indigoAccent.withValues(alpha: 0.12),
+                          backgroundColor: Colors.indigoAccent.withValues(
+                            alpha: 0.12,
+                          ),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(10),
                             side: BorderSide(
@@ -2742,20 +2764,22 @@ class _VideoPreviewDialogState extends State<_VideoPreviewDialog> {
   void initState() {
     super.initState();
     _controller = VideoPlayerController.file(widget.file)
-      ..initialize().then((_) {
-        if (mounted) {
-          setState(() {
-            _isInitialized = true;
+      ..initialize()
+          .then((_) {
+            if (mounted) {
+              setState(() {
+                _isInitialized = true;
+              });
+              _controller.play();
+            }
+          })
+          .catchError((_) {
+            if (mounted) {
+              setState(() {
+                _hasError = true;
+              });
+            }
           });
-          _controller.play();
-        }
-      }).catchError((_) {
-        if (mounted) {
-          setState(() {
-            _hasError = true;
-          });
-        }
-      });
     _controller.addListener(() {
       if (mounted) setState(() {});
     });
@@ -2775,141 +2799,157 @@ class _VideoPreviewDialogState extends State<_VideoPreviewDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final maxVideoHeight = MediaQuery.sizeOf(context).height * 0.60;
+
     return Dialog(
       backgroundColor: const Color(0xFF161B22),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       clipBehavior: Clip.antiAlias,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Header
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
-            child: Row(
-              children: [
-                const Icon(
-                  Icons.play_circle_fill,
-                  color: Colors.indigoAccent,
-                  size: 20,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    widget.title ?? 'Video Preview',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Header
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.play_circle_fill,
+                    color: Colors.indigoAccent,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      widget.title ?? 'Video Preview',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
                     ),
                   ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.close, color: Colors.white70),
-                  onPressed: () => Navigator.of(context).pop(),
-                ),
-              ],
-            ),
-          ),
-          if (_hasError)
-            Container(
-              height: 200,
-              alignment: Alignment.center,
-              child: const Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.error_outline, color: Colors.redAccent, size: 40),
-                  SizedBox(height: 8),
-                  Text(
-                    'Cannot play this video format',
-                    style: TextStyle(color: Colors.white70),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white70),
+                    onPressed: () => Navigator.of(context).pop(),
                   ),
                 ],
               ),
-            )
-          else if (!_isInitialized)
-            Container(
-              height: 200,
-              alignment: Alignment.center,
-              child: const CircularProgressIndicator(color: Colors.indigoAccent),
-            )
-          else
-            Flexible(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        if (_controller.value.isPlaying) {
-                          _controller.pause();
-                        } else {
-                          _controller.play();
-                        }
-                      });
-                    },
-                    child: Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        AspectRatio(
-                          aspectRatio: _controller.value.aspectRatio > 0
-                              ? _controller.value.aspectRatio
-                              : 16 / 9,
+            ),
+            if (_hasError)
+              Container(
+                height: 200,
+                alignment: Alignment.center,
+                child: const Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.error_outline,
+                      color: Colors.redAccent,
+                      size: 40,
+                    ),
+                    SizedBox(height: 8),
+                    Text(
+                      'Cannot play this video format',
+                      style: TextStyle(color: Colors.white70),
+                    ),
+                  ],
+                ),
+              )
+            else if (!_isInitialized)
+              Container(
+                height: 200,
+                alignment: Alignment.center,
+                child: const CircularProgressIndicator(
+                  color: Colors.indigoAccent,
+                ),
+              )
+            else ...[
+              Container(
+                constraints: BoxConstraints(maxHeight: maxVideoHeight),
+                color: Colors.black,
+                alignment: Alignment.center,
+                child: GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      if (_controller.value.isPlaying) {
+                        _controller.pause();
+                      } else {
+                        _controller.play();
+                      }
+                    });
+                  },
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      FittedBox(
+                        fit: BoxFit.contain,
+                        child: SizedBox(
+                          width: _controller.value.size.width > 0
+                              ? _controller.value.size.width
+                              : 16,
+                          height: _controller.value.size.height > 0
+                              ? _controller.value.size.height
+                              : 9,
                           child: VideoPlayer(_controller),
                         ),
-                        if (!_controller.value.isPlaying)
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: const BoxDecoration(
-                              color: Colors.black54,
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
-                              Icons.play_arrow_rounded,
-                              color: Colors.white,
-                              size: 40,
-                            ),
+                      ),
+                      if (!_controller.value.isPlaying)
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: const BoxDecoration(
+                            color: Colors.black54,
+                            shape: BoxShape.circle,
                           ),
-                      ],
-                    ),
-                  ),
-                  VideoProgressIndicator(
-                    _controller,
-                    allowScrubbing: true,
-                    colors: const VideoProgressColors(
-                      playedColor: Colors.indigoAccent,
-                      bufferedColor: Colors.white24,
-                      backgroundColor: Colors.white10,
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          _formatDuration(_controller.value.position),
-                          style: const TextStyle(
-                            color: Colors.white70,
-                            fontSize: 12,
+                          child: const Icon(
+                            Icons.play_arrow_rounded,
+                            color: Colors.white,
+                            size: 40,
                           ),
                         ),
-                        Text(
-                          _formatDuration(_controller.value.duration),
-                          style: const TextStyle(
-                            color: Colors.white38,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
+                    ],
                   ),
-                ],
+                ),
               ),
-            ),
-        ],
+              VideoProgressIndicator(
+                _controller,
+                allowScrubbing: true,
+                colors: const VideoProgressColors(
+                  playedColor: Colors.indigoAccent,
+                  bufferedColor: Colors.white24,
+                  backgroundColor: Colors.white10,
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      _formatDuration(_controller.value.position),
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 12,
+                      ),
+                    ),
+                    Text(
+                      _formatDuration(_controller.value.duration),
+                      style: const TextStyle(
+                        color: Colors.white38,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
